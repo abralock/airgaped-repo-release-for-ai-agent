@@ -1,0 +1,6 @@
+title = "snapshotkit gitleaks config"
+
+[extend]
+useDefault = true
+
+# Org-specific rules go below.
