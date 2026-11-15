@@ -52,6 +52,33 @@ The agent-cluster overlay's image `snapshotkit` is the **`tool`** target
 (`scripts/build-images.sh --target tool`); the MCP Deployment and the retention CronJob
 share it. The `publisher` image is only for pipelines and manual backfills.
 
+### Why two images
+
+Published as `ghcr.io/abralock/snapshotkit-publisher` (`publisher` target) and
+`ghcr.io/abralock/snapshotkit` (`tool` target). They run in different places and do
+different jobs:
+
+| | `snapshotkit-publisher` | `snapshotkit` |
+|---|---|---|
+| Runs where | CI pipelines (Azure DevOps and GitLab), as the job container | The agent's Kubernetes cluster: MCP Deployment and retention CronJob |
+| Job | Exports the repo with no history, scans for secrets, uploads the snapshot | Serves snapshots to the agent over MCP; deletes old snapshots |
+| Contains | git, git-lfs, gitleaks, crane | Only the Python app: no git, scanner or crane |
+| Starts with | a shell (CI runs its own script steps) | `snapshot-mcp` on port 8080 |
+
+They are kept apart on purpose:
+
+1. **No git where the agent runs.** The agent must never reach git history. With no
+   `git` binary in the tool image, even a bug or a prompt-injected agent cannot run
+   `git log` there.
+2. **Fewer components next to the agent.** Every extra binary in the tool image is more
+   for security scans to flag and more to patch.
+3. **CI and Kubernetes need different start-up behavior.** ADO and GitLab container jobs
+   break if the image has a fixed entrypoint, so the publisher starts a shell; the tool
+   image must start the server.
+
+Both come from the same `docker/Dockerfile` and Python package, so their code stays in
+sync.
+
 The store policies in `deploy/store/` hard-code the bucket `code-snapshots`, so
 `SNAPSHOT_STORE_BUCKET` must be `code-snapshots` (or edit the policies to match).
 
