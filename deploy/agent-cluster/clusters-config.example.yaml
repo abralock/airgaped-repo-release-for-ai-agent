@@ -1,0 +1,11 @@
+clusters:
+  - name: prod-a
+    server: https://prod-a.k8s.internal:6443
+    ca_file: /etc/snapshotkit/clusters/prod-a/ca.crt
+    token_file: /etc/snapshotkit/clusters/prod-a/token
+    namespaces: [shop, payments]
+  - name: prod-b
+    server: https://prod-b.k8s.internal:6443
+    ca_file: /etc/snapshotkit/clusters/prod-b/ca.crt
+    token_file: /etc/snapshotkit/clusters/prod-b/token
+    namespaces: [shop, payments]
