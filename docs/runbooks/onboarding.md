@@ -44,6 +44,11 @@
      and equal the project name the writer policy was made for in step 1, or the upload is
      denied.
    - The step is non-blocking: `continueOnError: true` (ADO) / `allow_failure: true` (GitLab).
+   - Prefer image tags without the commit SHA (semver, build number). The tag is stored in
+     the manifest and the tag index, which the agent reads; if the tag contains the SHA (or a
+     7+ character prefix of it) the step logs
+     `warning: image tag contains the commit SHA; it will be visible to the agent` and still
+     publishes.
 
 4. **Set the repo-shape options.**
    - Repo uses submodules or Git LFS: ADO `withSubmodulesOrLfs: true`; GitLab

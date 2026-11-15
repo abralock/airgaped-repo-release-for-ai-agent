@@ -400,3 +400,32 @@ def test_repo_with_symlink_outside_publishes_without_it(tmp_path, make_repo, mod
     assert out is Outcome.PUBLISHED
     with tarfile.open(fileobj=io.BytesIO(store.get(snapshot_key("proj", D))), mode="r:gz") as t:
         assert t.getnames() == ["a.txt"]
+
+
+SHA_WARNING = "image tag contains the commit SHA; it will be visible to the agent"
+
+
+@pytest.mark.parametrize("tag_of", [
+    lambda sha: sha, lambda sha: f"main-{sha[:7]}", lambda sha: f"1.2.{sha[:12].upper()}",
+])
+def test_warns_when_tag_contains_commit_sha(tmp_path, make_repo, capsys, tag_of):
+    repo, sha = make_repo(tmp_path, {"a.txt": "x"})
+    out = publish_snapshot(mkreq(tmp_path, repo, sha, image_tag=tag_of(sha)), InMemoryStore(),
+                           scanner=clean_scanner, scanner_version=lambda: "8", now=NOW)
+    assert out is Outcome.PUBLISHED  # a warning, not a failure
+    assert SHA_WARNING in capsys.readouterr().err
+
+
+def test_warns_in_checkout_mode_without_commit_arg(tmp_path, make_repo, capsys):
+    repo, sha = make_repo(tmp_path, {"a.txt": "x"})
+    publish_snapshot(mkreq(tmp_path, repo, "", mode="checkout", image_tag=sha[:8]),
+                     InMemoryStore(), scanner=clean_scanner, scanner_version=lambda: "8", now=NOW)
+    assert SHA_WARNING in capsys.readouterr().err
+
+
+@pytest.mark.parametrize("tag_of", [lambda sha: "1.4.2", lambda sha: f"b-{sha[:6]}"])
+def test_no_warning_for_tags_without_the_sha(tmp_path, make_repo, capsys, tag_of):
+    repo, sha = make_repo(tmp_path, {"a.txt": "x"})
+    publish_snapshot(mkreq(tmp_path, repo, sha, image_tag=tag_of(sha)), InMemoryStore(),
+                     scanner=clean_scanner, scanner_version=lambda: "8", now=NOW)
+    assert SHA_WARNING not in capsys.readouterr().err

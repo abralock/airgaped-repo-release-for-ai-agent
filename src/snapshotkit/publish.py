@@ -100,6 +100,21 @@ def _ignore_file(req: PublishRequest, workdir: Path) -> Path | None:
     return target
 
 
+def _warn_if_tag_has_sha(req: PublishRequest) -> None:
+    """The tag is in the manifest and index, so a SHA in it reaches the agent. Warn only."""
+    sha = req.commit
+    if not sha:
+        rev = subprocess.run(
+            ["git", "-C", str(req.repo_dir), "rev-parse", "HEAD"],
+            capture_output=True, text=True, check=False,
+        )
+        sha = rev.stdout.strip() if rev.returncode == 0 else ""
+    sha = sha.lower()
+    # any >=7-char prefix of the SHA contains its first 7 characters
+    if len(sha) >= 7 and sha[:7] in req.image_tag.lower():
+        _log("warning: image tag contains the commit SHA; it will be visible to the agent")
+
+
 def publish_snapshot(
     req: PublishRequest,
     store: SnapshotStore,
@@ -118,6 +133,7 @@ def publish_snapshot(
     snap_key = snapshot_key(req.project, req.image_digest)
     man_key = manifest_key(req.project, req.image_digest)
     tag_key = tag_index_key(req.image_repository, req.image_tag)
+    _warn_if_tag_has_sha(req)
 
     workdir = Path(req.workdir)
     workdir.mkdir(parents=True, exist_ok=True)
