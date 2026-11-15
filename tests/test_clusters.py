@@ -112,3 +112,45 @@ def test_all_image_ids_parses_and_drops_unparseable(tmp_path):
     ):
         assert reader.all_image_ids() == {D}
     assert core.list_namespaced_pod.call_count == 2  # one per configured namespace
+    for call in core.list_namespaced_pod.call_args_list:
+        assert call.kwargs["_request_timeout"] == 10
+
+
+def test_status_image_empty_falls_back_to_spec_image(tmp_path):
+    reader = _reader(tmp_path)
+    pod = _pod("p1")
+    pod.status.container_statuses[0].image = ""
+    spec_c = MagicMock()
+    spec_c.name, spec_c.image = "app", "reg/app:spec"
+    pod.spec.containers = [spec_c]
+    core, apps = MagicMock(), MagicMock()
+    core.list_namespaced_pod.return_value.items = [pod]
+    apps.read_namespaced_deployment.return_value.spec.selector.match_labels = {"a": "b"}
+    apps.read_namespaced_deployment.return_value.spec.selector.match_expressions = None
+    with patch("snapshotkit.clusters.client.AppsV1Api", return_value=apps), patch(
+        "snapshotkit.clusters.client.CoreV1Api", return_value=core
+    ):
+        out = reader.workload_pods("shop", "web")
+    assert out[0].image == "reg/app:spec"
+
+
+def test_credentials_config_and_token_rotation(tmp_path):
+    reader = _reader(tmp_path)
+    tok = reader.config.token_file
+    with patch("snapshotkit.clusters.client.Configuration") as conf_cls, patch(
+        "snapshotkit.clusters.client.ApiClient"
+    ) as api_cls, patch("snapshotkit.clusters.client.AppsV1Api"), patch(
+        "snapshotkit.clusters.client.CoreV1Api"
+    ) as core_cls:
+        core_cls.return_value.list_namespaced_pod.return_value.items = []
+        reader.all_image_ids()
+        cfg = conf_cls.return_value
+        assert cfg.host == "https://prod-a.k8s.internal:6443"
+        assert cfg.ssl_ca_cert == "/etc/snapshotkit/clusters/prod-a/ca.crt"
+        assert cfg.api_key == {"authorization": "Bearer s3cret"}
+        api_cls.assert_called_once_with(cfg)  # dedicated client, not the default config
+        conf_cls.set_default.assert_not_called()
+        tok.write_text("rotated\n")
+        reader.all_image_ids()
+        assert conf_cls.return_value.api_key == {"authorization": "Bearer rotated"}
+        assert api_cls.call_count == 2

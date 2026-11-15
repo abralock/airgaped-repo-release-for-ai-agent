@@ -150,6 +150,10 @@ def _containers(pod) -> list[PodContainer]:
         return [
             PodContainer(name, c.name, c.image, "") for c in pod.spec.containers
         ]
+    spec_images = {c.name: c.image for c in pod.spec.containers or []}
     return [
-        PodContainer(name, s.name, s.image, s.image_id or "") for s in statuses
+        PodContainer(
+            name, s.name, s.image or spec_images.get(s.name, ""), s.image_id or ""
+        )
+        for s in statuses
     ]

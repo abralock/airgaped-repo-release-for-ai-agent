@@ -47,9 +47,15 @@ def find_deployed_version(
             errors[name] = f"{type(e).__name__}: {e}"
             continue
         counts: Counter = Counter()
+        images: dict[tuple[str, str | None], str] = {}
         for pc in pods:
-            counts[(pc.container, pc.image, parse_image_id(pc.image_id))] += 1
-        for (container, image, digest), n in counts.items():
+            key = (pc.container, parse_image_id(pc.image_id))
+            counts[key] += 1
+            if pc.image and not images.get(key):
+                images[key] = pc.image
+            images.setdefault(key, "")
+        for (container, digest), n in counts.items():
+            image = images[(container, digest)]
             versions.append(
                 DeployedVersion(name, namespace, workload, container, image, digest, n)
             )

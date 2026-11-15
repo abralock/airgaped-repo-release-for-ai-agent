@@ -62,3 +62,22 @@ def test_namespace_not_allowed():
     res = find_deployed_version({"prod-a": r}, ALLOWED, "secret", "web")
     assert res.errors == {"prod-a": "namespace not allowed"}
     assert r.calls == []
+
+
+def test_same_container_and_digest_with_different_image_strings_is_one_row():
+    r = FakeClusterReader({KEY: [
+        PodContainer("p1", "app", "reg/app:1", f"reg/app@{X}"),
+        PodContainer("p2", "app", f"reg/app@{X}", f"reg/app@{X}"),
+    ]})
+    res = find_deployed_version({"prod-a": r}, ALLOWED, "shop", "web")
+    assert len(res.versions) == 1 and res.versions[0].pods == 2
+
+
+def test_pending_pods_with_different_images_group_to_one_none_row():
+    r = FakeClusterReader({KEY: [
+        PodContainer("p1", "app", "", ""),
+        PodContainer("p2", "app", "reg/app:2", ""),
+    ]})
+    res = find_deployed_version({"prod-a": r}, ALLOWED, "shop", "web")
+    assert len(res.versions) == 1
+    assert res.versions[0].digest is None and res.versions[0].image == "reg/app:2"
