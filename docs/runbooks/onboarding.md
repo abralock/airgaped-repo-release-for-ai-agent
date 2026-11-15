@@ -176,20 +176,38 @@ credential schedule and whenever someone with access leaves.
    the keys `SNAPSHOT_STORE_ENDPOINT`, `SNAPSHOT_STORE_BUCKET`, `SNAPSHOT_STORE_ACCESS_KEY`,
    `SNAPSHOT_STORE_SECRET_KEY`: `snapshot-store-reader` (used by `snapshot-mcp`) and
    `snapshot-store-admin` (used by `snapshot-retention`).
-3. **Deploy.** Copy `deploy/agent-cluster/overlays/example`, set the image name and tag, the
+3. **Reconcile the agent's existing NetworkPolicies** before applying
+   `networkpolicy-agent.yaml` (`agent-egress`). Policies are a union of allows, so list
+   every policy that selects the agent pods:
+
+   ```sh
+   kubectl -n <agent-ns> get networkpolicy -o yaml
+   ```
+
+   - (a) If an existing policy already allows broader egress for those pods, it defeats
+     `agent-egress`: narrow or remove it, or the restriction has no effect.
+   - (b) If none exists, applying `agent-egress` blocks every other egress the agent needs
+     (its L1 front end, auth, telemetry, ...): add those destinations to your overlay's
+     `agent-egress` patch first.
+
+   The MCP server has no authentication of its own; the ingress rule of the `snapshot-tool`
+   NetworkPolicy (only the agent's pods, port 8080) is its access control.
+4. **Deploy.** Copy `deploy/agent-cluster/overlays/example`, set the image name and tag, the
    cluster Secret items, and the NetworkPolicy addresses (object store, API servers, the
    agent's namespace and pod labels, model endpoint), then `kubectl apply -k` it. The tool
    serves streamable HTTP on port 8080 at `http://snapshot-mcp.code-snapshots.svc:8080/mcp`.
    Its snapshot cache (`emptyDir`, 5Gi) evicts least-recently-used snapshots above
    `SNAPSHOT_CACHE_MAX_BYTES` (default 4 GiB extracted); an evicted or never-fetched snapshot
    is fetched again on demand, so `replicas: 1` is fine and more replicas also work.
-   The `agent-egress` policy goes in the agent's namespace; everything not listed there
-   (including Azure DevOps and GitLab) is unreachable from the agent.
-4. **Register the tool with the agent** as an MCP server at that URL. Tools:
+   The `agent-egress` policy goes in the agent's namespace. Everything not listed there
+   (including Azure DevOps and GitLab) is unreachable from the agent only if no other
+   NetworkPolicy allows wider egress for these pods (step 3), and only on a CNI that
+   enforces NetworkPolicy.
+5. **Register the tool with the agent** as an MCP server at that URL. Tools:
    `find_deployed_version(namespace, workload, cluster?)`, `get_snapshot(ref)`,
    `list_files(snapshot_id, subdir?)`, `read_file(snapshot_id, path)`,
    `search_code(snapshot_id, pattern, glob?)`.
-5. **System prompt.** Tell the agent, in its system prompt:
+6. **System prompt.** Tell the agent, in its system prompt:
 
    > To answer questions about the code that is running in production, first call
    > `find_deployed_version` for the namespace and workload, then call `get_snapshot` with
@@ -199,7 +217,7 @@ credential schedule and whenever someone with access leaves.
    > reply exactly "No snapshot available for this version." Never guess, and never answer
    > from the code of a different version.
 
-6. **Retention** runs daily at 03:00 (`snapshot-retention` CronJob). It keeps a snapshot if it
+7. **Retention** runs daily at 03:00 (`snapshot-retention` CronJob). It keeps a snapshot if it
    is deployed anywhere, among the 20 newest for its project, or younger than 90 days. Exit
    `2` means a cluster was unreachable and nothing was deleted. Use
    `snapshot-retention --dry-run` (same env) to preview.

@@ -1,5 +1,15 @@
-# Lives in the agent's namespace (overlay sets it). Anything not listed, including
-# Azure DevOps and GitLab, is unreachable from the agent pods.
+# Lives in the agent's namespace (overlay sets it).
+#
+# NetworkPolicies are additive: a pod's allowed egress is the UNION of every policy
+# that selects it. Before applying this, list the existing ones
+# (`kubectl -n <agent-ns> get networkpolicy -o yaml`) and reconcile:
+#  - an existing policy that allows broader egress for these pods defeats this one;
+#  - if none exists, this policy blocks every other egress the agent needs (its L1
+#    front end, auth, telemetry, ...): add those destinations in the overlay first.
+# Azure DevOps and GitLab are unreachable from the agent pods only if no other policy
+# allows wider egress for them, and only on a CNI that enforces NetworkPolicy.
+# The MCP server has no authentication of its own: the ingress rule of the
+# snapshot-tool policy is its access control.
 apiVersion: networking.k8s.io/v1
 kind: NetworkPolicy
 metadata:
