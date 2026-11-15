@@ -110,3 +110,8 @@ def test_boto_minimum_versions_pinned():
         "project"]["dependencies"]
     # 1.36.0: first botocore with request_checksum_calculation (IfNoneMatch is older)
     assert "boto3>=1.36.0" in deps and "botocore>=1.36.0" in deps
+
+
+def test_project_with_trailing_newline_rejected():
+    with pytest.raises(ValueError):
+        validate_project("proj\n")

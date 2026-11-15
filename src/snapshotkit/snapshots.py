@@ -78,7 +78,7 @@ class SnapshotCache:
         return self._max_bytes
 
     def _index_key(self, ref: str) -> str:
-        if DIGEST_RE.match(ref):
+        if DIGEST_RE.fullmatch(ref):
             return digest_index_key(ref)
         slash = ref.rfind("/")
         colon = ref.rfind(":")
@@ -104,7 +104,7 @@ class SnapshotCache:
     def get_snapshot(self, ref: str) -> SnapshotInfo:
         index = self._load_json(self._index_key(ref))
         digest, project = index.get("snapshot_digest"), index.get("project")
-        if not isinstance(digest, str) or not DIGEST_RE.match(digest):
+        if not isinstance(digest, str) or not DIGEST_RE.fullmatch(digest):
             raise SnapshotNotFound
         if not isinstance(project, str):
             raise SnapshotNotFound

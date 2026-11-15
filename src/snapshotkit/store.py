@@ -11,7 +11,7 @@ _WHITESPACE_RE = re.compile(r"\s")
 
 
 def validate_project(name: str) -> str:
-    if not PROJECT_RE.match(name) or name.endswith("\n"):
+    if not PROJECT_RE.fullmatch(name):
         raise ValueError(f"invalid project name: {name!r}")
     return name
 

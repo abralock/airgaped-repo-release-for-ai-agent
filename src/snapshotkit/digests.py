@@ -11,12 +11,12 @@ def parse_image_id(image_id: str) -> str | None:
         candidate = image_id.rsplit("@", 1)[1]
     else:
         candidate = image_id.split("://", 1)[1] if "://" in image_id else image_id
-    return candidate if DIGEST_RE.match(candidate) else None
+    return candidate if DIGEST_RE.fullmatch(candidate) else None
 
 
 def digest_key(digest: str) -> str:
     """Filesystem/object-key safe form of a digest: ``sha256-<hex>``."""
-    if not DIGEST_RE.match(digest):
+    if not DIGEST_RE.fullmatch(digest):
         raise ValueError(f"invalid digest: {digest!r}")
     return digest.replace(":", "-", 1)
 

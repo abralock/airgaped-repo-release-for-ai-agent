@@ -32,3 +32,13 @@ def test_invalid_digests_exit_1(monkeypatch):
     assert run(monkeypatch, s, "--project", "p", "--digest", D, "--alias-digest", "bad") == 1
     assert run(monkeypatch, s, "--project", "BAD!", "--digest", D, "--alias-digest", A) == 1
     assert list(s.list_keys("")) == []
+
+
+def test_alias_digest_with_trailing_newline_rejected():
+    import pytest as _pytest
+    from snapshotkit.alias import add_alias
+    from snapshotkit.store import InMemoryStore
+    good = "sha256:" + "a" * 64
+    for digest, alias in ((good + "\n", good), (good, good + "\n")):
+        with _pytest.raises(ValueError):
+            add_alias(InMemoryStore(), "proj", digest, alias)

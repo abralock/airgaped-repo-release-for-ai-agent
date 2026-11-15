@@ -36,3 +36,13 @@ def test_platform_digests_index():
 
 def test_platform_digests_single_manifest():
     assert platform_digests(json.dumps({"mediaType": "application/vnd.oci.image.manifest.v1+json", "layers": []})) == []
+
+
+def test_trailing_newline_rejected():
+    import pytest as _pytest
+    from snapshotkit.digests import digest_key, parse_image_id
+    nl = "sha256:" + "a" * 64 + "\n"
+    with _pytest.raises(ValueError):
+        digest_key(nl)
+    assert parse_image_id(nl) is None
+    assert parse_image_id("reg/app@" + nl) is None

@@ -252,3 +252,15 @@ def test_existing_cache_dirs_count_toward_budget(tmp_path):
 def test_default_budget_is_4_gib(tmp_path):
     import inspect
     assert inspect.signature(SnapshotCache).parameters["max_bytes"].default == 4 * 1024**3
+
+
+def test_ref_with_trailing_newline_not_found(cache, store):
+    store.put("index/digest/sha256-" + "a" * 64 + "\n.json", _index())  # never reachable
+    with pytest.raises(SnapshotNotFound):
+        cache.get_snapshot(PRIMARY + "\n")
+
+
+def test_index_digest_with_trailing_newline_not_found(cache, store):
+    store.put(digest_index_key(ALIAS), _index(digest=PRIMARY + "\n"))
+    with pytest.raises(SnapshotNotFound):
+        cache.get_snapshot(ALIAS)
