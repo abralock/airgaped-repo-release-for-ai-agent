@@ -191,3 +191,21 @@ credential schedule and whenever someone with access leaves.
    is deployed anywhere, among the 20 newest for its project, or younger than 90 days. Exit
    `2` means a cluster was unreachable and nothing was deleted. Use
    `snapshot-retention --dry-run` (same env) to preview.
+
+## Two stores with a one-way gap
+
+If the CI zone and production cannot share a bucket, move snapshots across with a bundle.
+Both commands read the store from the `SNAPSHOT_STORE_*` env vars of the zone they run in.
+
+```
+# CI zone: write keys not yet exported, then record them in the state file
+snapshot-transfer export --out /media/bundle --state /var/lib/snapshots/exported.json
+
+# production zone, after carrying /media/bundle across
+snapshot-transfer import --in /media/bundle
+```
+
+Import verifies every checksum before writing anything, writes snapshots before the index,
+never overwrites an existing snapshot or digest entry, and overwrites tag entries. Exit `0`
+is success, `1` is an error (checksum mismatch, bad key). Keep the state file; deleting it
+re-exports everything.
