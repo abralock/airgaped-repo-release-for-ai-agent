@@ -1,0 +1,90 @@
+# Azure DevOps job template: publish a history-free, secret-scanned source snapshot.
+# Consume with `- template: snapshot-publish-job.yml@templates` under `jobs:`.
+# Store credentials (SNAPSHOT_STORE_ENDPOINT, SNAPSHOT_STORE_BUCKET, SNAPSHOT_STORE_ACCESS_KEY,
+# SNAPSHOT_STORE_SECRET_KEY, optional SNAPSHOT_NOTIFY_WEBHOOK) and registry credentials
+# (REGISTRY_USER, REGISTRY_PASSWORD, needed only for multiArch) come from the variable group.
+parameters:
+  - name: dependsOn
+    type: string
+  - name: project
+    type: string
+  - name: imageRepository
+    type: string
+  - name: imageTag
+    type: string
+  - name: imageDigest
+    type: string
+  - name: withSubmodulesOrLfs
+    type: boolean
+    default: false
+  - name: multiArch
+    type: boolean
+    default: false
+  - name: publisherImage
+    type: string
+  - name: variableGroup
+    type: string
+    default: snapshot-store
+
+jobs:
+  - job: SnapshotPublish
+    displayName: Publish code snapshot
+    dependsOn: ${{ parameters.dependsOn }}
+    continueOnError: true
+    container:
+      image: ${{ parameters.publisherImage }}
+      options: --user 0:0
+    variables:
+      - group: ${{ parameters.variableGroup }}
+      - name: IMAGE_DIGEST
+        value: ${{ parameters.imageDigest }}
+    steps:
+      - checkout: self
+        fetchDepth: 1
+        persistCredentials: false
+        ${{ if eq(parameters.withSubmodulesOrLfs, true) }}:
+          submodules: recursive
+          lfs: true
+      - ${{ if eq(parameters.multiArch, true) }}:
+          - script: |
+              set -eu
+              registry_host="${IMAGE_REPOSITORY%%/*}"
+              crane auth login "$registry_host" -u "$REGISTRY_USER" -p "$REGISTRY_PASSWORD"
+              crane manifest "${IMAGE_REPOSITORY}@${IMAGE_DIGEST}" > platform-manifest.json
+            displayName: Fetch image index manifest
+            env:
+              IMAGE_REPOSITORY: ${{ parameters.imageRepository }}
+              REGISTRY_USER: $(REGISTRY_USER)
+              REGISTRY_PASSWORD: $(REGISTRY_PASSWORD)
+      - script: |
+          git config --global --add safe.directory '*'
+          set +e
+          snapshot-publish \
+            --repo-dir "$(Build.SourcesDirectory)" \
+            --commit $(Build.SourceVersion) \
+            --mode ${{ iif(parameters.withSubmodulesOrLfs, 'checkout', 'archive') }} \
+            --project "${{ parameters.project }}" \
+            --source-platform azure-devops \
+            --repo-path "$(Build.Repository.Name)" \
+            --image-repository "${{ parameters.imageRepository }}" \
+            --image-tag "${{ parameters.imageTag }}" \
+            --image-digest "$(IMAGE_DIGEST)" \
+            ${{ iif(parameters.multiArch, '--platform-manifest platform-manifest.json', '') }} \
+            --pipeline-run-url "$(System.CollectionUri)$(System.TeamProject)/_build/results?buildId=$(Build.BuildId)" \
+            --gitleaks-config /etc/snapshotkit/gitleaks.toml
+          rc=$?
+          set -e
+          case "$rc" in
+            0) ;;
+            10) echo "##vso[task.logissue type=warning]Secrets found; snapshot not published" ;;
+            11) echo "##vso[task.logissue type=warning]Export refused: repo uses submodules or LFS; set withSubmodulesOrLfs: true on this template" ;;
+            *) echo "##vso[task.logissue type=warning]Snapshot publish failed (exit $rc); snapshot not published" ;;
+          esac
+          exit "$rc"
+        displayName: snapshot-publish
+        env:
+          SNAPSHOT_STORE_ENDPOINT: $(SNAPSHOT_STORE_ENDPOINT)
+          SNAPSHOT_STORE_BUCKET: $(SNAPSHOT_STORE_BUCKET)
+          SNAPSHOT_STORE_ACCESS_KEY: $(SNAPSHOT_STORE_ACCESS_KEY)
+          SNAPSHOT_STORE_SECRET_KEY: $(SNAPSHOT_STORE_SECRET_KEY)
+          SNAPSHOT_NOTIFY_WEBHOOK: $(SNAPSHOT_NOTIFY_WEBHOOK)

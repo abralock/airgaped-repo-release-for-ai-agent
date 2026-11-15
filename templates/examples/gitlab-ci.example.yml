@@ -1,0 +1,26 @@
+# Example: build + push an image, then publish a code snapshot.
+include:
+  - project: platform/snapshot-templates
+    ref: v1
+    file: gitlab/snapshot-publish.gitlab-ci.yml
+
+stages:
+  - build
+  - snapshot
+
+build:
+  stage: build
+  script:
+    - echo "build and push; write IMAGE_REPOSITORY, IMAGE_TAG, IMAGE_DIGEST to build.env"
+  artifacts:
+    reports:
+      dotenv: build.env
+
+snapshot:
+  stage: snapshot
+  extends: .snapshot-publish
+  needs:
+    - job: build
+      artifacts: true
+  variables:
+    SNAPSHOT_PUBLISHER_IMAGE: registry.internal/snapshotkit/publisher:1

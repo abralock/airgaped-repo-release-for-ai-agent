@@ -1,0 +1,26 @@
+# Example: build + push an image, then publish a code snapshot.
+resources:
+  repositories:
+    - repository: templates
+      type: git
+      name: platform/snapshot-templates
+      ref: refs/tags/v1
+
+trigger:
+  - main
+
+stages:
+  - stage: Release
+    jobs:
+      - job: Build
+        steps:
+          - script: echo "build and push; emit imageDigest"
+            name: push
+      - template: azure-devops/snapshot-publish-job.yml@templates
+        parameters:
+          dependsOn: Build
+          project: my-service
+          imageRepository: registry.internal/my-service
+          imageTag: $(Build.BuildNumber)
+          imageDigest: $[ dependencies.Build.outputs['push.imageDigest'] ]
+          publisherImage: registry.internal/snapshotkit/publisher:1

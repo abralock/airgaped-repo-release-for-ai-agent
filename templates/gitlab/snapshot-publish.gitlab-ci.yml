@@ -1,0 +1,47 @@
+# GitLab hidden job: publish a history-free, secret-scanned source snapshot.
+# Consumers set (via `variables:` / `needs` dotenv artifact): IMAGE_REPOSITORY, IMAGE_TAG, IMAGE_DIGEST,
+# SNAPSHOT_PUBLISHER_IMAGE, and optionally SNAPSHOT_MODE, SNAPSHOT_PROJECT, SNAPSHOT_MULTI_ARCH.
+# Store credentials (SNAPSHOT_STORE_ENDPOINT, SNAPSHOT_STORE_BUCKET, SNAPSHOT_STORE_ACCESS_KEY,
+# SNAPSHOT_STORE_SECRET_KEY, optional SNAPSHOT_NOTIFY_WEBHOOK) and, for multi-arch, REGISTRY_USER /
+# REGISTRY_PASSWORD are masked CI/CD variables; none are defined here.
+# SNAPSHOT_MODE=checkout (repos with submodules or LFS) requires the consumer to ALSO set
+# GIT_SUBMODULE_STRATEGY: recursive (the runner pulls LFS objects by default).
+.snapshot-publish:
+  image: $SNAPSHOT_PUBLISHER_IMAGE
+  allow_failure: true
+  variables:
+    GIT_DEPTH: "1"
+    SNAPSHOT_MODE: archive
+    SNAPSHOT_PROJECT: $CI_PROJECT_NAME
+    SNAPSHOT_MULTI_ARCH: "false"
+  script:
+    - export HOME=/tmp
+    - git config --global --add safe.directory "$CI_PROJECT_DIR"
+    - |
+      EXTRA=""
+      if [ "$SNAPSHOT_MULTI_ARCH" = "true" ]; then
+        crane auth login "${IMAGE_REPOSITORY%%/*}" -u "$REGISTRY_USER" -p "$REGISTRY_PASSWORD"
+        crane manifest "${IMAGE_REPOSITORY}@${IMAGE_DIGEST}" > platform-manifest.json
+        EXTRA="--platform-manifest platform-manifest.json"
+      fi
+      rc=0
+      snapshot-publish \
+        --repo-dir "$CI_PROJECT_DIR" \
+        --commit "$CI_COMMIT_SHA" \
+        --mode "$SNAPSHOT_MODE" \
+        --project "$SNAPSHOT_PROJECT" \
+        --source-platform gitlab \
+        --repo-path "$CI_PROJECT_PATH" \
+        --image-repository "$IMAGE_REPOSITORY" \
+        --image-tag "$IMAGE_TAG" \
+        --image-digest "$IMAGE_DIGEST" \
+        $EXTRA \
+        --pipeline-run-url "$CI_PIPELINE_URL" \
+        --gitleaks-config /etc/snapshotkit/gitleaks.toml || rc=$?
+      case "$rc" in
+        0) ;;
+        10) echo "WARNING: secrets found; snapshot not published" ;;
+        11) echo "WARNING: export refused; repo uses submodules or LFS, set SNAPSHOT_MODE=checkout and GIT_SUBMODULE_STRATEGY=recursive" ;;
+        *) echo "WARNING: snapshot publish failed (exit $rc); snapshot not published" ;;
+      esac
+      exit "$rc"

@@ -10,7 +10,7 @@ requires-python = ">=3.12"
 dependencies = ["boto3", "kubernetes", "mcp>=1.9", "PyYAML"]
 
 [project.optional-dependencies]
-dev = ["pytest"]
+dev = ["pytest", "yamllint"]
 
 [project.scripts]
 snapshot-publish = "snapshotkit.publish:main"
