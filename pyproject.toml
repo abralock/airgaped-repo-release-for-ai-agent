@@ -1,0 +1,30 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "snapshotkit"
+version = "0.1.0"
+description = "History-free, secret-scanned source snapshots for air-gapped AI agents"
+requires-python = ">=3.12"
+dependencies = ["boto3", "kubernetes", "mcp>=1.9", "PyYAML"]
+
+[project.optional-dependencies]
+dev = ["pytest"]
+
+[project.scripts]
+snapshot-publish = "snapshotkit.publish:main"
+snapshot-alias = "snapshotkit.alias:main"
+snapshot-retention = "snapshotkit.retention:main"
+snapshot-mcp = "snapshotkit.mcp_server:main"
+snapshot-transfer = "snapshotkit.transfer:main"
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+markers = [
+    "integration: tests needing external services",
+    "gitleaks: tests needing the gitleaks binary",
+]
