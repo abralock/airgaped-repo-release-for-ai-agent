@@ -84,7 +84,9 @@ def test_gitlab_job():
     assert job["timeout"] == "30m"
     assert job["variables"]["GIT_DEPTH"] == "1"
     assert job["variables"]["SNAPSHOT_MODE"] == "archive"
-    assert job["variables"]["SNAPSHOT_PROJECT"] == "$CI_PROJECT_NAME"
+    assert job["variables"]["SNAPSHOT_PROJECT"] == "$CI_PROJECT_PATH_SLUG"
+    header = GL.read_text().split(".snapshot-publish:")[0]
+    assert "^[a-z0-9][a-z0-9._-]{0,99}$" in header and "make-writer-policy.sh" in header
     assert job["variables"]["SNAPSHOT_MULTI_ARCH"] == "false"
     assert "SNAPSHOT_PUBLISHER_IMAGE" in GL.read_text()
     assert job["image"] == "$SNAPSHOT_PUBLISHER_IMAGE"

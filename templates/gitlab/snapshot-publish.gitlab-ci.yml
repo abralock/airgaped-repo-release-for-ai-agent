@@ -6,6 +6,10 @@
 # REGISTRY_PASSWORD are masked CI/CD variables; none are defined here.
 # SNAPSHOT_MODE=checkout (repos with submodules or LFS) requires the consumer to ALSO set
 # GIT_SUBMODULE_STRATEGY: recursive (the runner pulls LFS objects by default).
+# SNAPSHOT_PROJECT defaults to $CI_PROJECT_PATH_SLUG (e.g. group-sub-my-service; lowercase,
+# so it is a valid name where $CI_PROJECT_NAME may not be). It must match
+# ^[a-z0-9][a-z0-9._-]{0,99}$ and be the project name the store's writer policy was made
+# for (deploy/store/make-writer-policy.sh <project>), or the upload is denied.
 .snapshot-publish:
   image: $SNAPSHOT_PUBLISHER_IMAGE
   allow_failure: true
@@ -13,7 +17,7 @@
   variables:
     GIT_DEPTH: "1"
     SNAPSHOT_MODE: archive
-    SNAPSHOT_PROJECT: $CI_PROJECT_NAME
+    SNAPSHOT_PROJECT: $CI_PROJECT_PATH_SLUG
     SNAPSHOT_MULTI_ARCH: "false"
   script:
     - export HOME=/tmp

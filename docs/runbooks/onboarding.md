@@ -39,7 +39,10 @@
      `gitlab/snapshot-publish.gitlab-ci.yml` and add a job `extends: .snapshot-publish`
      with `needs` on the build job. The build job must export `IMAGE_REPOSITORY`,
      `IMAGE_TAG` and `IMAGE_DIGEST` (dotenv artifact). Set `SNAPSHOT_PUBLISHER_IMAGE`;
-     optionally `SNAPSHOT_PROJECT` (default `$CI_PROJECT_NAME`).
+     optionally `SNAPSHOT_PROJECT` (default `$CI_PROJECT_PATH_SLUG`, e.g.
+     `group-sub-my-service`). Whatever its value, it must match `^[a-z0-9][a-z0-9._-]{0,99}$`
+     and equal the project name the writer policy was made for in step 1, or the upload is
+     denied.
    - The step is non-blocking: `continueOnError: true` (ADO) / `allow_failure: true` (GitLab).
 
 4. **Set the repo-shape options.**
