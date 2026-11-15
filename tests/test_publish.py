@@ -98,15 +98,17 @@ def test_export_refused(tmp_path, make_repo):
 
 
 def test_rerun_same_digest_is_already_published(tmp_path, make_repo):
-    out, store, _ = go(tmp_path, make_repo)
-    before = store.get(snapshot_key("proj", D))
-    repo = tmp_path / "repo"
-    sha = git(repo, "rev-parse", "HEAD")
-    req = mkreq(tmp_path, repo, sha, workdir=tmp_path / "work2")
-    out2 = publish_snapshot(req, store, scanner=clean_scanner, scanner_version=lambda: "v", now=NOW)
-    assert out2 is Outcome.ALREADY_PUBLISHED
-    assert store.get(snapshot_key("proj", D)) == before
-    assert store.get(digest_index_key(A1)) is not None
+    repo, sha = make_repo(tmp_path, {"a.txt": "hello"})
+    store = InMemoryStore()
+    store.put_new(snapshot_key("proj", D), b"preexisting")
+    req = mkreq(tmp_path, repo, sha)
+    out = publish_snapshot(req, store, scanner=clean_scanner, scanner_version=lambda: "v", now=NOW)
+    assert out is Outcome.ALREADY_PUBLISHED
+    assert store.get(snapshot_key("proj", D)) == b"preexisting"
+    assert store.get(manifest_key("proj", D)) is not None
+    for d in (D, A1, A2):
+        assert store.get(digest_index_key(d)) is not None
+    assert store.get(tag_index_key("reg/app", "1.0")) is not None
 
 
 class Recording(InMemoryStore):
@@ -201,3 +203,25 @@ def test_main_platform_manifest(monkeypatch, tmp_path):
     monkeypatch.setattr(publish.S3Store, "from_env", classmethod(lambda cls: InMemoryStore()))
     assert publish.main([*ARGS, "--alias-digest", A2, "--platform-manifest", str(pm)]) == 0
     assert seen["a"] == [A2, A1]
+
+
+def test_main_bad_webhook_still_exit_10(monkeypatch):
+    monkeypatch.setenv("SNAPSHOT_NOTIFY_WEBHOOK", "hooks.internal/x")
+    monkeypatch.setattr(publish, "publish_snapshot", lambda r, s: Outcome.SECRETS_FOUND)
+    monkeypatch.setattr(publish.S3Store, "from_env", classmethod(lambda cls: InMemoryStore()))
+    assert publish.main(ARGS) == 10
+
+
+def test_main_usage_error_exits_1_and_notifies(monkeypatch):
+    calls = []
+    monkeypatch.setattr(publish, "send_failure", lambda url, payload: calls.append(payload))
+    assert publish.main(["--project", "p"]) == 1
+    assert calls and calls[0]["project"] == "p"
+
+
+def test_main_invalid_source_platform_exits_1(monkeypatch):
+    calls = []
+    monkeypatch.setattr(publish, "send_failure", lambda url, payload: calls.append(payload))
+    args = [a if a != "gitlab" else "github" for a in ARGS]
+    assert publish.main(args) == 1
+    assert calls

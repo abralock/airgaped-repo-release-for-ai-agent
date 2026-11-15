@@ -126,13 +126,22 @@ def publish_snapshot(
     return Outcome.PUBLISHED if created else Outcome.ALREADY_PUBLISHED
 
 
+class _UsageError(Exception):
+    pass
+
+
+class _Parser(argparse.ArgumentParser):
+    def error(self, message: str):  # type: ignore[override]
+        raise _UsageError(message)
+
+
 def _parser() -> argparse.ArgumentParser:
-    p = argparse.ArgumentParser(prog="snapshot-publish")
+    p = _Parser(prog="snapshot-publish")
     p.add_argument("--repo-dir", type=Path, required=True)
     p.add_argument("--commit", default="")
     p.add_argument("--mode", choices=["archive", "checkout"], default="archive")
     p.add_argument("--project", required=True)
-    p.add_argument("--source-platform", required=True)
+    p.add_argument("--source-platform", required=True, choices=["azure-devops", "gitlab"])
     p.add_argument("--repo-path", required=True)
     p.add_argument("--image-repository", required=True)
     p.add_argument("--image-tag", required=True)
@@ -155,8 +164,28 @@ _EXIT = {
 
 
 def main(argv: list[str] | None = None) -> int:
-    args = _parser().parse_args(argv)
     webhook = os.environ.get("SNAPSHOT_NOTIFY_WEBHOOK")
+    try:
+        args = _parser().parse_args(argv)
+    except _UsageError as e:
+        _log(f"usage error: {e}")
+        known = argparse.ArgumentParser(add_help=False, exit_on_error=False)
+        for f in ("--project", "--image-digest", "--pipeline-run-url"):
+            known.add_argument(f)
+        try:
+            k, _ = known.parse_known_args(argv)
+        except Exception:  # noqa: BLE001
+            k = argparse.Namespace(project=None, image_digest=None, pipeline_run_url=None)
+        send_failure(
+            webhook,
+            {
+                "project": k.project,
+                "image_digest": k.image_digest,
+                "reason": f"usage error: {e}",
+                "pipeline_run_url": k.pipeline_run_url,
+            },
+        )
+        return 1
     payload = {
         "project": args.project,
         "image_digest": args.image_digest,

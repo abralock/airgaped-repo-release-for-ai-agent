@@ -7,19 +7,19 @@ import urllib.request
 def send_failure(webhook_url: str | None, payload: dict) -> None:
     if not webhook_url:
         return
-    body = json.dumps(
-        {
-            k: payload.get(k)
-            for k in ("project", "image_digest", "reason", "pipeline_run_url")
-        }
-    ).encode()
-    req = urllib.request.Request(
-        webhook_url,
-        data=body,
-        headers={"Content-Type": "application/json"},
-        method="POST",
-    )
     try:
+        body = json.dumps(
+            {
+                k: payload.get(k)
+                for k in ("project", "image_digest", "reason", "pipeline_run_url")
+            }
+        ).encode()
+        req = urllib.request.Request(
+            webhook_url,
+            data=body,
+            headers={"Content-Type": "application/json"},
+            method="POST",
+        )
         with urllib.request.urlopen(req, timeout=5):
             pass
     except Exception as e:  # noqa: BLE001 - notification must never fail the build

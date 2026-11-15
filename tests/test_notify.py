@@ -41,3 +41,8 @@ def test_unreachable_returns_quickly():
 
 def test_none_url_is_noop():
     send_failure(None, PAYLOAD)
+
+
+def test_malformed_url_never_raises():
+    send_failure("not-a-url", PAYLOAD)
+    send_failure("http://[::1", PAYLOAD)
