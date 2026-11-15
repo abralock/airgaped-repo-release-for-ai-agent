@@ -135,7 +135,7 @@ def test_unreachable_cluster_deletes_nothing(capsys):
 def test_dry_run_deletes_nothing(capsys):
     s = _old_store()
     before = dict(s._objects)
-    readers = {"ok": FakeClusterReader()}
+    readers = {"ok": FakeClusterReader(image_ids={dg(999)})}
     assert main(["--dry-run"], store=s, readers=readers) == 0
     assert s._objects == before
     out = capsys.readouterr().out
@@ -149,3 +149,18 @@ def test_main_deletes_and_summarizes(capsys):
     assert "kept 21, deleted 4" in capsys.readouterr().out
     assert s.get(snapshot_key("a", dg(24))) is None
     assert s.get(snapshot_key("a", dg(25))) is not None
+
+
+def test_cluster_reporting_no_running_digests_deletes_nothing(capsys):
+    # e.g. a token bound to no namespaces, or wrong namespaces configured
+    s = _old_store()
+    before = dict(s._objects)
+    readers = {
+        "ok": FakeClusterReader(image_ids={dg(25)}),
+        "empty": FakeClusterReader(image_ids=set()),
+    }
+    for argv in ([], ["--dry-run"]):
+        assert main(argv, store=s, readers=readers) == 2
+    assert s._objects == before and s.deleted == []
+    assert ("cluster empty reported no running image digests; refusing to delete"
+            in capsys.readouterr().err)

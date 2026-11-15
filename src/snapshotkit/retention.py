@@ -109,10 +109,21 @@ def _collect_deployed(readers: dict[str, ClusterReader]) -> tuple[set[str], list
     failed: list[str] = []
     for name in sorted(readers):
         try:
-            deployed |= readers[name].all_image_ids()
+            ids = readers[name].all_image_ids()
         except Exception as e:  # noqa: BLE001
             print(f"cluster {name} unreachable: {type(e).__name__}: {e}", file=sys.stderr)
             failed.append(name)
+            continue
+        if not ids:
+            # A production cluster running nothing is far more likely a wrong namespace
+            # list or a token with no bindings than reality; treat it as a failure.
+            print(
+                f"cluster {name} reported no running image digests; refusing to delete",
+                file=sys.stderr,
+            )
+            failed.append(name)
+            continue
+        deployed |= ids
     return deployed, failed
 
 
@@ -132,7 +143,7 @@ def main(
         deployed, failed = _collect_deployed(readers)
         if failed:
             print(
-                "aborting, nothing deleted; unreachable clusters: " + ", ".join(failed),
+                "aborting, nothing deleted; failed clusters: " + ", ".join(failed),
                 file=sys.stderr,
             )
             return 2

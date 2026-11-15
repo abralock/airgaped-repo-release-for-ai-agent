@@ -121,7 +121,8 @@
    egress rule, then apply the overlay.
 
 5. **Dry-run retention before the next scheduled run.** Retention aborts with exit `2`
-   and deletes nothing if any configured cluster is unreachable, so a mistake in steps 1-4
+   and deletes nothing if any configured cluster is unreachable or reports no running image
+   digests at all (wrong namespaces, unbound token), so a mistake in steps 1-4
    would stop all cleanup:
 
    ```sh
@@ -134,7 +135,8 @@
    ```
 
    Expect
-   `dry run: kept N, would delete M` and no `cluster ... unreachable` line.
+   `dry run: kept N, would delete M` and no `cluster ... unreachable` or
+   `cluster ... reported no running image digests` line.
    Also ask the agent to `find_deployed_version` for a workload in the new cluster and
    check the `errors` list is empty.
 
@@ -219,7 +221,8 @@ credential schedule and whenever someone with access leaves.
 
 7. **Retention** runs daily at 03:00 (`snapshot-retention` CronJob). It keeps a snapshot if it
    is deployed anywhere, among the 20 newest for its project, or younger than 90 days. Exit
-   `2` means a cluster was unreachable and nothing was deleted. Use
+   `2` means a cluster was unreachable or reported no running image digests, and nothing
+   was deleted. Use
    `snapshot-retention --dry-run` (same env) to preview.
 
 ## Two stores with a one-way gap
