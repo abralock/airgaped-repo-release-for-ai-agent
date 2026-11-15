@@ -51,3 +51,9 @@ def test_publisher_target_runs_non_root_with_config():
     assert re.search(r"^FROM .* AS publisher", text, flags=re.MULTILINE)
     assert "USER 10001" in text
     assert "/etc/snapshotkit/gitleaks.toml" in text
+
+
+def test_publisher_has_no_entrypoint():
+    # CI container jobs (Azure DevOps, GitLab) need an image without ENTRYPOINT.
+    assert not re.search(r"^ENTRYPOINT\b", _text(), flags=re.MULTILINE)
+    assert re.search(r'^CMD \["/bin/sh"\]', _text(), flags=re.MULTILINE)

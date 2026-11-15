@@ -71,4 +71,4 @@ COPY --from=fetch /out/gitleaks /out/crane /usr/local/bin/
 COPY config/gitleaks.toml /etc/snapshotkit/gitleaks.toml
 USER 10001
 WORKDIR /home/snapshot
-ENTRYPOINT ["/bin/sh"]
+CMD ["/bin/sh"]
