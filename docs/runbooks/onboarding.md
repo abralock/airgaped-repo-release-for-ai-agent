@@ -180,6 +180,9 @@ credential schedule and whenever someone with access leaves.
    cluster Secret items, and the NetworkPolicy addresses (object store, API servers, the
    agent's namespace and pod labels, model endpoint), then `kubectl apply -k` it. The tool
    serves streamable HTTP on port 8080 at `http://snapshot-mcp.code-snapshots.svc:8080/mcp`.
+   Its snapshot cache (`emptyDir`, 5Gi) evicts least-recently-used snapshots above
+   `SNAPSHOT_CACHE_MAX_BYTES` (default 4 GiB extracted); an evicted or never-fetched snapshot
+   is fetched again on demand, so `replicas: 1` is fine and more replicas also work.
    The `agent-egress` policy goes in the agent's namespace; everything not listed there
    (including Azure DevOps and GitLab) is unreachable from the agent.
 4. **Register the tool with the agent** as an MCP server at that URL. Tools:

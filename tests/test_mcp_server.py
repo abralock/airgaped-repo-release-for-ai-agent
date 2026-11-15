@@ -88,10 +88,16 @@ def test_file_tools_work_after_fetch(handlers):
     assert handlers.search_code(SNAP_ID, "print")["matches"]
 
 
-def test_file_tools_require_fetched_snapshot(handlers):
-    assert handlers.read_file(SNAP_ID, "src/app.py") == {"error": MSG}
-    assert handlers.list_files(SNAP_ID) == {"error": MSG}
-    assert handlers.search_code(SNAP_ID, "x") == {"error": MSG}
+def test_file_tools_fetch_a_published_snapshot_not_in_the_cache(handlers):
+    # e.g. the pod restarted, or another replica answered get_snapshot
+    assert handlers.read_file(SNAP_ID, "src/app.py")["content"] == "print(1)\n"
+
+
+def test_file_tools_on_unknown_snapshot_say_no_snapshot(handlers):
+    unknown = "sha256-" + "c" * 64
+    assert handlers.read_file(unknown, "src/app.py") == {"error": MSG}
+    assert handlers.list_files(unknown) == {"error": MSG}
+    assert handlers.search_code(unknown, "x") == {"error": MSG}
 
 
 def test_errors_are_returned_not_raised(handlers):
@@ -143,3 +149,12 @@ def test_call_tool_round_trip(readers, cache):
     snap, read = asyncio.run(run())
     assert json.loads(snap.content[0].text)["snapshot_id"] == SNAP_ID
     assert json.loads(read.content[0].text)["content"] == "print(1)\n"
+
+
+def test_cache_budget_from_env(monkeypatch, tmp_path):
+    monkeypatch.setenv("SNAPSHOT_CACHE_DIR", str(tmp_path / "c"))
+    monkeypatch.delenv("SNAPSHOT_CACHE_MAX_BYTES", raising=False)
+    cache = mcp_server.cache_from_env(InMemoryStore())
+    assert cache.max_bytes == 4 * 1024**3 and cache.root == tmp_path / "c"
+    monkeypatch.setenv("SNAPSHOT_CACHE_MAX_BYTES", "12345")
+    assert mcp_server.cache_from_env(InMemoryStore()).max_bytes == 12345

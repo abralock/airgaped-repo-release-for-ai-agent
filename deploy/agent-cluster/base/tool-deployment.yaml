@@ -6,6 +6,8 @@ metadata:
   labels:
     app.kubernetes.io/name: snapshot-mcp
 spec:
+  # One replica is enough. More also work: each pod has its own cache and fetches a
+  # snapshot from the store on first use, so any replica can serve any snapshot_id.
   replicas: 1
   selector:
     matchLabels:
@@ -73,6 +75,9 @@ spec:
             items:
               - key: clusters.yaml
                 path: clusters.yaml
+        # The tool evicts least-recently-used snapshots above SNAPSHOT_CACHE_MAX_BYTES
+        # (default 4 GiB of extracted files); the extra 1Gi is room for one snapshot
+        # being extracted (1 GiB limit). Raise both together.
         - name: cache
           emptyDir:
             sizeLimit: 5Gi

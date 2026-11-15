@@ -16,7 +16,7 @@ from mcp.server.mcpserver import MCPServer
 from snapshotkit import files, lookup
 from snapshotkit.clusters import ClusterReader, load_cluster_configs
 from snapshotkit.lookup import build_readers
-from snapshotkit.snapshots import SnapshotCache, SnapshotNotFound
+from snapshotkit.snapshots import DEFAULT_MAX_BYTES, SnapshotCache, SnapshotNotFound
 from snapshotkit.store import S3Store
 
 FIND_DESCRIPTION = (
@@ -123,10 +123,20 @@ def build_server(
     return server
 
 
+def cache_from_env(store) -> SnapshotCache:
+    """SNAPSHOT_CACHE_DIR (default /cache), SNAPSHOT_CACHE_MAX_BYTES (default 4 GiB)."""
+    max_bytes = os.environ.get("SNAPSHOT_CACHE_MAX_BYTES")
+    return SnapshotCache(
+        store,
+        Path(os.environ.get("SNAPSHOT_CACHE_DIR", "/cache")),
+        max_bytes=int(max_bytes) if max_bytes else DEFAULT_MAX_BYTES,
+    )
+
+
 def main() -> None:
     configs = load_cluster_configs(Path(os.environ["SNAPSHOT_TOOL_CLUSTERS"]))
     readers, allowed = build_readers(configs)
-    cache = SnapshotCache(S3Store.from_env(), Path(os.environ.get("SNAPSHOT_CACHE_DIR", "/cache")))
+    cache = cache_from_env(S3Store.from_env())
     server = build_server(readers, allowed, cache)
     server.run(transport="streamable-http", host=server.bind_host, port=server.bind_port)
 

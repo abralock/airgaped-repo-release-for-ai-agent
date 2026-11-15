@@ -132,9 +132,28 @@ def test_path_for_validates_id(cache, sid):
         cache.path_for(sid)
 
 
-def test_path_for_uncached(cache):
+def test_path_for_unknown_snapshot_not_found(cache):
     with pytest.raises(SnapshotNotFound):
-        cache.path_for(PRIMARY_ID)
+        cache.path_for("sha256-" + "c" * 64)
+
+
+def test_path_for_never_fetched_snapshot_fetches_it(cache):
+    path = cache.path_for(PRIMARY_ID)
+    assert (path / "src" / "app.py").read_text() == "print(1)\n"
+
+
+def test_path_for_refetches_after_cache_loss(cache, store, tmp_path):
+    import shutil
+    info = cache.get_snapshot(PRIMARY)
+    shutil.rmtree(tmp_path / "cache")  # pod restart / another replica
+    assert cache.path_for(PRIMARY_ID) == info.path
+    assert (info.path / "src" / "app.py").read_text() == "print(1)\n"
+    assert store.gets[snapshot_key("proj", PRIMARY)] == 2
+
+
+def test_path_for_alias_id_is_not_a_snapshot_id(cache):
+    with pytest.raises(SnapshotNotFound):
+        cache.path_for("sha256-" + "b" * 64)
 
 
 def test_second_call_uses_cache(cache, store):
@@ -161,3 +180,75 @@ def test_concurrent_extract_is_atomic(store, tmp_path):
     assert not errors and len(results) == 2
     assert [p.name for p in root.iterdir()] == [PRIMARY_ID]
     assert not any(".tmp" in p.name for p in root.iterdir())
+
+
+def _digest(c):
+    return "sha256:" + c * 64
+
+
+def _sized_store(tmp_path, sizes: dict[str, int]):
+    s = CountingStore()
+    for c, n in sizes.items():
+        d = _digest(c)
+        tar = tmp_path / f"{c}.tar.gz"
+        write_normalized_targz([Entry("a.bin", 0o644, b"x" * n), Entry("d/b.bin", 0o644, b"y" * n)], tar)
+        s.put(snapshot_key("proj", d), tar.read_bytes())
+        s.put(manifest_key("proj", d), json.dumps({"project": "proj"}).encode())
+        s.put(digest_index_key(d), _index(digest=d))
+    return s
+
+
+def _cached_ids(root):
+    return sorted(p.name[len("sha256-"):][0] for p in root.iterdir())
+
+
+def _du(root):
+    return sum(f.stat().st_size for f in root.rglob("*") if f.is_file())
+
+
+def test_eviction_keeps_cache_under_budget(tmp_path):
+    root = tmp_path / "cache"
+    cache = SnapshotCache(_sized_store(tmp_path, {"c": 500, "d": 500, "e": 500}), root,
+                          max_bytes=2500)
+    for c in "cde":
+        cache.get_snapshot(_digest(c))
+        assert _du(root) <= 2500
+    assert _cached_ids(root) == ["d", "e"]
+    assert not any(".evict" in p.name or ".tmp" in p.name for p in root.iterdir())
+
+
+def test_eviction_is_least_recently_used(tmp_path):
+    root = tmp_path / "cache"
+    store = _sized_store(tmp_path, {"c": 500, "d": 500, "e": 500})
+    cache = SnapshotCache(store, root, max_bytes=2500)
+    cache.get_snapshot(_digest("c"))
+    cache.get_snapshot(_digest("d"))
+    cache.path_for("sha256-" + "c" * 64)  # c is now more recent than d
+    cache.get_snapshot(_digest("e"))
+    assert _cached_ids(root) == ["c", "e"]
+    cache.path_for("sha256-" + "d" * 64)  # evicted, fetched again; c is now oldest
+    assert _cached_ids(root) == ["d", "e"]
+    assert store.gets[snapshot_key("proj", _digest("d"))] == 2
+
+
+def test_snapshot_larger_than_budget_is_still_served(tmp_path):
+    root = tmp_path / "cache"
+    cache = SnapshotCache(_sized_store(tmp_path, {"c": 500, "d": 5000}), root, max_bytes=2500)
+    cache.get_snapshot(_digest("c"))
+    info = cache.get_snapshot(_digest("d"))
+    assert _cached_ids(root) == ["d"] and (info.path / "a.bin").stat().st_size == 5000
+
+
+def test_existing_cache_dirs_count_toward_budget(tmp_path):
+    root = tmp_path / "cache"
+    store = _sized_store(tmp_path, {"c": 500, "d": 500, "e": 500})
+    SnapshotCache(store, root).get_snapshot(_digest("c"))
+    cache = SnapshotCache(store, root, max_bytes=2500)  # restarted with a warm cache
+    cache.get_snapshot(_digest("d"))
+    cache.get_snapshot(_digest("e"))
+    assert _cached_ids(root) == ["d", "e"]
+
+
+def test_default_budget_is_4_gib(tmp_path):
+    import inspect
+    assert inspect.signature(SnapshotCache).parameters["max_bytes"].default == 4 * 1024**3
