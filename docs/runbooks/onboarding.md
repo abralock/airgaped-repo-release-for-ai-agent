@@ -198,7 +198,7 @@ If the CI zone and production cannot share a bucket, move snapshots across with 
 Both commands read the store from the `SNAPSHOT_STORE_*` env vars of the zone they run in.
 
 ```
-# CI zone: write keys not yet exported, then record them in the state file
+# CI zone: write new or changed keys (e.g. a re-tagged image), then record their checksums in the state file
 snapshot-transfer export --out /media/bundle --state /var/lib/snapshots/exported.json
 
 # production zone, after carrying /media/bundle across

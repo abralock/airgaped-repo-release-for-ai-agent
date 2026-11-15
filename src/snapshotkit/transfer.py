@@ -42,35 +42,41 @@ def _check_key(key: str) -> None:
         or ".." in key.split("/")
         or ".." in key
         or "\\" in key
+        or "\0" in key
         or not key.startswith(PREFIXES)
     ):
         raise TransferError(f"bad key in bundle: {key!r}")
 
 
-def _read_state(state_file: Path) -> set[str]:
+def _read_state(state_file: Path) -> dict[str, str | None]:
+    """Exported keys -> sha256 at export time (None for the old list format)."""
     if not state_file.exists():
-        return set()
+        return {}
     data = json.loads(state_file.read_text())
-    if not isinstance(data, list):
-        raise TransferError("state file must be a JSON list")
-    return set(data)
+    if isinstance(data, list):
+        return {k: None for k in data}
+    if isinstance(data, dict):
+        return dict(data)
+    raise TransferError("state file must be a JSON object (or legacy list)")
 
 
 def export_bundle(src: SnapshotStore, out_dir: Path, state_file: Path) -> int:
-    done = _read_state(state_file)
-    new_keys = sorted(
-        {k for p in PREFIXES for k in src.list_keys(p)} - done
-    )
+    state = _read_state(state_file)
     files: dict[str, str] = {}
-    for key in new_keys:
+    for key in sorted({k for p in PREFIXES for k in src.list_keys(p)}):
+        if key in state and not key.startswith("index/tag/"):
+            continue  # write-once keys never change; skip without fetching
         data = src.get(key)
         if data is None:
             continue  # deleted between list and get
+        digest = _sha256(data)
+        if state.get(key) == digest:
+            continue
         _atomic_write(out_dir / key, data)
-        files[key] = _sha256(data)
+        files[key] = digest
     manifest = {"version": BUNDLE_VERSION, "files": files}
     _atomic_write(out_dir / BUNDLE_NAME, json.dumps(manifest, sort_keys=True).encode())
-    _atomic_write(state_file, json.dumps(sorted(done | set(files))).encode())
+    _atomic_write(state_file, json.dumps({**state, **files}, sort_keys=True).encode())
     return len(files)
 
 

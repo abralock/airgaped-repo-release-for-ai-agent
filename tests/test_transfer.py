@@ -94,9 +94,45 @@ def test_missing_state_file_means_nothing_exported(tmp_path):
     assert sorted(json.loads(state.read_text())) == sorted([SNAP, MAN, DIG, TAG])
 
 
+def test_retagged_key_is_reexported_and_import_updates_it(tmp_path):
+    src, dst = _src(), InMemoryStore()
+    state = tmp_path / "s.json"
+    export_bundle(src, tmp_path / "b1", state)
+    import_bundle(dst, tmp_path / "b1")
+    src.put(TAG, b"moved-to-new-digest")
+    assert export_bundle(src, tmp_path / "b2", state) == 1
+    assert (tmp_path / "b2" / TAG).read_bytes() == b"moved-to-new-digest"
+    assert import_bundle(dst, tmp_path / "b2") == 1
+    assert dst.get(TAG) == b"moved-to-new-digest"
+
+
+def test_unchanged_keys_not_reexported(tmp_path):
+    src = _src()
+    state = tmp_path / "s.json"
+    export_bundle(src, tmp_path / "b1", state)
+    assert export_bundle(src, tmp_path / "b2", state) == 0
+
+
+def test_legacy_list_state_accepted(tmp_path):
+    state = tmp_path / "s.json"
+    state.write_text(json.dumps([SNAP, MAN, DIG, TAG]))
+    assert export_bundle(_src(), tmp_path / "b", state) == 1  # only the tag
+    files = json.loads((tmp_path / "b" / "bundle.json").read_text())["files"]
+    assert list(files) == [TAG]
+    assert set(json.loads(state.read_text())) == {SNAP, MAN, DIG, TAG}
+
+
+def test_nul_in_key_rejected(tmp_path):
+    b = tmp_path / "b"
+    b.mkdir()
+    (b / "bundle.json").write_text(json.dumps({"version": 1, "files": {SNAP + "\0x": "0"}}))
+    with pytest.raises(TransferError, match="bad key"):
+        import_bundle(InMemoryStore(), b)
+
+
 def test_failed_export_leaves_state_unchanged(tmp_path):
     state = tmp_path / "s.json"
-    state.write_text(json.dumps([SNAP]))
+    state.write_text(json.dumps({SNAP: "0"}))
 
     class Failing(InMemoryStore):
         def get(self, key):
@@ -109,7 +145,7 @@ def test_failed_export_leaves_state_unchanged(tmp_path):
         src.put(k, k.encode())
     with pytest.raises(RuntimeError):
         export_bundle(src, tmp_path / "b", state)
-    assert json.loads(state.read_text()) == [SNAP]
+    assert json.loads(state.read_text()) == {SNAP: "0"}
     assert not (tmp_path / "b" / "bundle.json").exists()
 
 
