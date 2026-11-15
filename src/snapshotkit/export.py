@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import os
+import posixpath
 import subprocess
 import tempfile
 import tarfile
@@ -41,6 +42,21 @@ def _git(repo: Path, *args: str, input: bytes | None = None) -> bytes:
     return subprocess.run(
         ["git", *args], cwd=repo, input=input, check=True, capture_output=True
     ).stdout
+
+
+_OUTSIDE = " (symlink outside repo)"
+
+
+def _link_escapes(path: str, target: str) -> bool:
+    """True if a symlink at path with this target is absolute or resolves outside the root.
+
+    Such links would make the snapshot unextractable (safe_extract refuses them), so
+    they are dropped at export and reported in files_denied.
+    """
+    if target.startswith("/"):
+        return True
+    resolved = posixpath.normpath(posixpath.join(posixpath.dirname(path), target))
+    return resolved == ".." or resolved.startswith("../")
 
 
 def _finish(entries: list[Entry], denied: list[str], out_path: Path) -> ExportStats:
@@ -83,6 +99,9 @@ def export_from_archive(
                             denied.append(m.name)
                         continue
                     if m.issym():
+                        if _link_escapes(m.name, m.linkname):
+                            denied.append(m.name + _OUTSIDE)
+                            continue
                         entries.append(Entry(m.name, m.mode, None, m.linkname))
                     elif m.isfile():
                         f = tar.extractfile(m)
@@ -184,6 +203,9 @@ def export_from_checkout(
             denied.append(p)
             continue
         if is_link:
+            if _link_escapes(p, target):
+                denied.append(p + _OUTSIDE)
+                continue
             entries.append(Entry(p, 0o755, None, target))
             continue
         if data[: len(_LFS_MAGIC)] == _LFS_MAGIC:

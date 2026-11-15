@@ -162,3 +162,39 @@ def test_unscannable_documents_and_gitleaksignore_excluded(tmp_path, make_repo, 
         stats = export_from_checkout(repo, out)
     assert names(out) == ["src/app.py"]
     assert {"doc.pdf", ".gitleaksignore"} <= set(stats.files_denied)
+
+
+def _repo_with_links(tmp_path, make_repo):
+    repo, _ = make_repo(tmp_path, {"a.txt": "x", "d/b.txt": "y"}, commit=False)
+    links = {
+        "abs": "/etc/passwd",
+        "up": "../outside",
+        "d/up2": "../../x",
+        "d/sneaky": "../d/../../x",
+        "in": "a.txt",
+        "d/in2": "../a.txt",
+        "d/self": ".",
+    }
+    for name, target in links.items():
+        (repo / name).symlink_to(target)
+    git(repo, "add", "-A")
+    git(repo, "commit", "-q", "-m", "links")
+    return repo, git(repo, "rev-parse", "HEAD")
+
+
+ESCAPING = {"abs", "up", "d/up2", "d/sneaky"}
+
+
+@pytest.mark.parametrize("mode", ["archive", "checkout"])
+def test_symlinks_pointing_outside_repo_are_dropped(tmp_path, make_repo, mode):
+    repo, sha = _repo_with_links(tmp_path, make_repo)
+    out = tmp_path / "o.tar.gz"
+    if mode == "archive":
+        stats = export_from_archive(repo, sha, out)
+    else:
+        stats = export_from_checkout(repo, out)
+    n = set(names(out))
+    assert n == {"a.txt", "d/b.txt", "in", "d/in2", "d/self"}
+    assert set(stats.files_denied) == {f"{p} (symlink outside repo)" for p in ESCAPING}
+    from snapshotkit.tarball import safe_extract
+    safe_extract(out, tmp_path / "x")  # the result is extractable

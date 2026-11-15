@@ -385,3 +385,18 @@ def test_untracked_gitleaksignore_in_archive_mode_still_finds_secrets(tmp_path, 
     out = publish_snapshot(mkreq(tmp_path, repo, sha, gitleaks_config=cfg), InMemoryStore(),
                            scanner=run_gitleaks, scanner_version=lambda: "8", now=NOW)
     assert out is Outcome.SECRETS_FOUND
+
+
+@pytest.mark.parametrize("mode", ["archive", "checkout"])
+def test_repo_with_symlink_outside_publishes_without_it(tmp_path, make_repo, mode):
+    repo, _ = make_repo(tmp_path, {"a.txt": "x"}, commit=False)
+    (repo / "etc").symlink_to("/etc/passwd")
+    git(repo, "add", "-A")
+    git(repo, "commit", "-q", "-m", "m")
+    sha = git(repo, "rev-parse", "HEAD")
+    store = InMemoryStore()
+    out = publish_snapshot(mkreq(tmp_path, repo, sha, mode=mode), store,
+                           scanner=clean_scanner, scanner_version=lambda: "8", now=NOW)
+    assert out is Outcome.PUBLISHED
+    with tarfile.open(fileobj=io.BytesIO(store.get(snapshot_key("proj", D))), mode="r:gz") as t:
+        assert t.getnames() == ["a.txt"]
