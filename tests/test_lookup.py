@@ -81,3 +81,60 @@ def test_pending_pods_with_different_images_group_to_one_none_row():
     res = find_deployed_version({"prod-a": r}, ALLOWED, "shop", "web")
     assert len(res.versions) == 1
     assert res.versions[0].digest is None and res.versions[0].image == "reg/app:2"
+
+
+class _BlockingReader:
+    def __init__(self, release):
+        self.release = release
+
+    def workload_pods(self, namespace, workload):
+        self.release.wait(10)
+        return []
+
+    def all_image_ids(self):
+        return set()
+
+
+def test_hung_cluster_times_out_and_others_still_answer():
+    import threading
+    import time
+    release = threading.Event()
+    readers = {
+        "prod-a": FakeClusterReader({KEY: [pc("p1", X)]}),
+        "prod-b": _BlockingReader(release),
+        "prod-c": FakeClusterReader({KEY: [pc("p1", Y)]}),
+    }
+    allowed = {**ALLOWED, "prod-c": ["shop"]}
+    try:
+        start = time.monotonic()
+        res = find_deployed_version(readers, allowed, "shop", "web", deadline_seconds=0.3)
+        elapsed = time.monotonic() - start
+    finally:
+        release.set()
+    assert elapsed < 2
+    assert [(v.cluster, v.digest) for v in res.versions] == [("prod-a", X), ("prod-c", Y)]
+    assert res.errors == {"prod-b": "timeout: no answer within 0.3s"}
+
+
+def test_clusters_are_queried_concurrently():
+    import threading
+    import time
+    barrier = threading.Barrier(3, timeout=2)
+
+    class _Rendezvous(FakeClusterReader):
+        def workload_pods(self, namespace, workload):
+            barrier.wait()  # only passes if all three run at the same time
+            return super().workload_pods(namespace, workload)
+
+    readers = {n: _Rendezvous({KEY: [pc("p1", X)]}) for n in ("prod-a", "prod-b", "prod-c")}
+    allowed = {n: ["shop"] for n in readers}
+    start = time.monotonic()
+    res = find_deployed_version(readers, allowed, "shop", "web")
+    assert res.errors == {} and len(res.versions) == 3
+    assert time.monotonic() - start < 2
+
+
+def test_default_deadline_is_15_seconds():
+    import inspect
+    sig = inspect.signature(find_deployed_version)
+    assert sig.parameters["deadline_seconds"].default == 15

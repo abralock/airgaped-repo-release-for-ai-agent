@@ -154,3 +154,9 @@ def test_credentials_config_and_token_rotation(tmp_path):
         reader.all_image_ids()
         assert conf_cls.return_value.api_key == {"authorization": "Bearer rotated"}
         assert api_cls.call_count == 2
+
+
+def test_api_client_disables_urllib3_retries(tmp_path):
+    # Without this urllib3 retries 3 times, so an unreachable cluster costs 4 x timeout.
+    api = _reader(tmp_path)._api_client()
+    assert api.configuration.retries == 0

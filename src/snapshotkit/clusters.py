@@ -100,6 +100,9 @@ class KubeClusterReader:
         cfg.ssl_ca_cert = str(self.config.ca_file)
         token = self.config.token_file.read_text().strip()
         cfg.api_key = {"authorization": f"Bearer {token}"}
+        # urllib3 retries 3 times by default, so an unreachable cluster would cost
+        # 4 x timeout per call. Fail after one attempt; callers report the error.
+        cfg.retries = 0
         return client.ApiClient(cfg)
 
     def _apis(self):
