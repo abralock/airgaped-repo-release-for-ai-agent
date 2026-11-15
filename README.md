@@ -55,4 +55,19 @@ Design: [docs/superpowers/specs/2026-11-14-history-free-code-snapshots-design.md
 
 ## Air-gapped test run
 
-To be completed in Task 17.
+```bash
+bash scripts/test-airgapped.sh
+```
+
+Builds a test image (`docker/test.Dockerfile`, network used only at build time), then:
+
+1. runs the unit tests with `--network none` (gitleaks and kubectl are present, so the
+   gitleaks and kustomize tests must run, not skip);
+2. asserts a socket connect to `1.1.1.1:443` fails inside that sandbox;
+3. runs the integration tests on a `docker network create --internal` network where the
+   only reachable peer is a MinIO container;
+4. builds the `publisher` and `tool` images and smoke-tests them with `--network none`.
+
+It prints `AIRGAPPED TESTS PASSED` only if every step succeeds, and always removes the
+MinIO container and network. Override `BASE_IMAGE`, `PIP_INDEX_URL`, `GITLEAKS_URL`,
+`KUBECTL_URL`, their `*_SHA256_*` values and `MINIO_IMAGE` to point at internal mirrors.
