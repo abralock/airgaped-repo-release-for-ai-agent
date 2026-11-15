@@ -125,7 +125,7 @@ class SnapshotCache:
             raise
 
     def path_for(self, snapshot_id: str) -> Path:
-        if not isinstance(snapshot_id, str) or not _ID_RE.match(snapshot_id):
+        if not isinstance(snapshot_id, str) or not _ID_RE.fullmatch(snapshot_id):
             raise SnapshotNotFound
         path = self._root / snapshot_id
         if not path.is_dir():
