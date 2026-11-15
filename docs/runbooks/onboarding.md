@@ -49,9 +49,9 @@
    - The image is a multi-arch index: ADO `multiArch: true`; GitLab `SNAPSHOT_MULTI_ARCH: "true"`.
      The step fetches the index manifest with `crane` so each platform digest resolves to the
      snapshot.
-   - Files never published (denylist, `src/snapshotkit/denylist.py`, matched against every
-     path component): `.env*`, `*.pem`, `*.key`, `*.p12`, `*.pfx`, `id_rsa*`, `*.kdbx`,
-     `secrets.*`, `.git*` (except `.gitignore` / `.gitattributes`), and containers or
+   - Files never published (denylist, `src/snapshotkit/denylist.py`, matched case-insensitively
+     against every path component): `.env*`, `*.pem`, `*.key`, `*.p12`, `*.pfx`, `id_rsa*`, `*.kdbx`,
+     `secrets.*`, `.git*` (except `.gitignore` / `.gitattributes`, exact case), and containers or
      documents gitleaks cannot inspect: `*.pdf`, `*.doc`, `*.docx`, `*.xls`, `*.xlsx`,
      `*.ppt`, `*.pptx`, `*.odt`, `*.ods`, `*.zip`, `*.jar`, `*.war`, `*.ear`, `*.tar`,
      `*.tgz`, `*.gz`, `*.bz2`, `*.xz`, `*.7z`, `*.rar`, `*.whl`. Everything else, including

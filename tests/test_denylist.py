@@ -29,3 +29,16 @@ def test_unscannable_containers_denied(p):
 
 def test_gitleaksignore_denied_so_scanner_never_autoloads_it():
     assert is_denied(".gitleaksignore")
+
+
+@pytest.mark.parametrize("p", [
+    "certs/SERVER.PEM", ".ENV", "keys/ID_RSA", "config/Secrets.yaml", "DOCS/A.PDF",
+    ".GitHub/workflows/ci.yml", ".GITIGNORE", ".GitAttributes",
+])
+def test_denied_case_insensitively(p):
+    # .gitignore / .gitattributes stay allowed only in their exact lowercase spelling
+    assert is_denied(p)
+
+
+def test_allowed_exceptions_are_exact_case():
+    assert not is_denied("a/.gitignore") and not is_denied(".gitattributes")

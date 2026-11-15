@@ -18,10 +18,16 @@ _ALLOWED_FINAL = {".gitignore", ".gitattributes"}
 
 
 def is_denied(path: str, patterns: Sequence[str] = DEFAULT_DENYLIST) -> bool:
+    """Case-insensitive match of any path component (SERVER.PEM, .ENV, Secrets.yaml).
+
+    The .gitignore / .gitattributes exceptions apply to the exact lowercase name only.
+    """
+    lowered = [pat.lower() for pat in patterns]
     parts = [p for p in path.split("/") if p]
     for i, part in enumerate(parts):
         if i == len(parts) - 1 and part in _ALLOWED_FINAL:
             continue
-        if any(fnmatchcase(part, pat) for pat in patterns):
+        name = part.lower()
+        if any(fnmatchcase(name, pat) for pat in lowered):
             return True
     return False
