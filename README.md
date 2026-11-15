@@ -48,6 +48,13 @@ scripts/build-images.sh --target tool          # -> snapshot-tool:dev
 scripts/build-images.sh --target publisher --platform linux/amd64,linux/arm64 --tag registry.internal/snapshotkit/publisher:1 --push
 ```
 
+The agent-cluster overlay's image `snapshotkit` is the **`tool`** target
+(`scripts/build-images.sh --target tool`); the MCP Deployment and the retention CronJob
+share it. The `publisher` image is only for pipelines and manual backfills.
+
+The store policies in `deploy/store/` hard-code the bucket `code-snapshots`, so
+`SNAPSHOT_STORE_BUCKET` must be `code-snapshots` (or edit the policies to match).
+
 The script carries public-internet defaults for dev; in the air gap override them through
 environment variables (see the header of `docker/Dockerfile` and
 [onboarding, section C](docs/runbooks/onboarding.md)).

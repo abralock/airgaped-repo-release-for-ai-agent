@@ -13,7 +13,9 @@
    Create the policy in your store from that JSON, create a user for the project, attach
    the policy, and issue an access key and secret key. (MinIO: `mc admin policy create`,
    `mc admin user add`, `mc admin policy attach`; other S3 stores have equivalents.)
-   The bucket is `code-snapshots`. The tool-reader and retention-admin policies are in
+   The bucket is `code-snapshots`: every policy in `deploy/store/` hard-codes it, so
+   `SNAPSHOT_STORE_BUCKET` must be `code-snapshots` everywhere (or edit the policies to
+   match). The tool-reader and retention-admin policies are in
    `deploy/store/policies/` and are used by section C, not by pipelines.
 
 2. **Add the variable group (Azure DevOps) or CI/CD variables (GitLab).**
@@ -202,7 +204,9 @@ credential schedule and whenever someone with access leaves.
 
    The MCP server has no authentication of its own; the ingress rule of the `snapshot-tool`
    NetworkPolicy (only the agent's pods, port 8080) is its access control.
-4. **Deploy.** Copy `deploy/agent-cluster/overlays/example`, set the image name and tag, the
+4. **Deploy.** Copy `deploy/agent-cluster/overlays/example`, set the image name and tag (the
+   overlay's image `snapshotkit` is the **`tool`** target, `scripts/build-images.sh --target
+   tool`; the `snapshot-mcp` Deployment and the `snapshot-retention` CronJob share it), the
    cluster Secret items, and the NetworkPolicy addresses (object store, API servers, the
    agent's namespace and pod labels, model endpoint), then `kubectl apply -k` it. The tool
    serves streamable HTTP on port 8080 at `http://snapshot-mcp.code-snapshots.svc:8080/mcp`.
@@ -236,7 +240,15 @@ credential schedule and whenever someone with access leaves.
 ## Two stores with a one-way gap
 
 If the CI zone and production cannot share a bucket, move snapshots across with a bundle.
-Both commands read the store from the `SNAPSHOT_STORE_*` env vars of the zone they run in.
+Both commands read the store from the `SNAPSHOT_STORE_*` env vars of the zone they run in:
+
+- `export` needs **read and list** on the CI-side store (`s3:GetObject` on
+  `code-snapshots/*`, `s3:ListBucket` on `code-snapshots`): a user with
+  `deploy/store/policies/tool-reader.json` on that store.
+- `import` needs **write** on the production-side store (`s3:PutObject` on
+  `code-snapshots/snapshots/*` and `code-snapshots/index/*`): a dedicated transfer-import
+  user there, not a pipeline writer (those are scoped to one project) and not the tool or
+  retention user.
 
 ```
 # CI zone: write new or changed keys (e.g. a re-tagged image), then record their checksums in the state file
@@ -250,3 +262,7 @@ Import verifies every checksum before writing anything, writes snapshots before 
 never overwrites an existing snapshot or digest entry, and overwrites tag entries. Exit `0`
 is success, `1` is an error (checksum mismatch, bad key). Keep the state file; deleting it
 re-exports everything.
+
+The checksums in the bundle only detect corruption: whoever can write the bundle can
+rewrite them too. Authenticity of the bundle comes from the approved transfer mechanism
+(the controlled media or one-way gateway and its procedures), not from snapshot-transfer.

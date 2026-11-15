@@ -149,7 +149,7 @@ code; that is not this runbook. If it is a false positive:
 2. **The project commits the fingerprint to `.gitleaksignore`** at its repo root, one
    fingerprint per line (for example `cfg.py:aws-access-token:1`), and the reviewer approves
    that change. `snapshot-publish` reads the `.gitleaksignore` committed at the exported
-   commit (archive mode) or tracked in the checkout (checkout mode) and passes it to
+   commit (archive mode) or committed at HEAD (checkout mode) and passes it to
    gitleaks, so future builds publish without further action. An untracked file is never
    used. The file itself is not part of the snapshot. The manifest records
    `scan_result: clean`. The commit that adds the ignore entry must be the one built, so
@@ -193,5 +193,15 @@ Troubleshooting:
 - Exit `1`: read stderr. Typical causes: store unreachable or wrong credentials,
   unknown commit in `--commit`, invalid `--project` or digest.
 - `already-published`: nothing to do. A snapshot cannot be overwritten; to replace one,
-  a store admin must delete the three objects for that digest (`snapshots/<project>/<digest>.tar.gz`,
-  `.json` and the `index/digest/...` entries) and then republish.
+  a store admin deletes **every** object for that digest, then republishes. Keys use
+  `sha256-<hex>` for `sha256:<hex>`:
+  - the tar `snapshots/<project>/sha256-<hex>.tar.gz`;
+  - the manifest `snapshots/<project>/sha256-<hex>.json`;
+  - the digest index entries `index/digest/sha256-<hex>.json` for the primary digest **and
+    for each alias** (per-platform digests, `snapshot-alias` entries): every
+    `index/digest/*.json` whose body has `"snapshot_digest": "sha256:<hex>"`;
+  - the tag entries pointing at it: every `index/tag/<repository>/<tag>.json` whose body
+    has that `snapshot_digest`.
+
+  Delete the index entries first, then the manifest and tar (the order retention uses), so
+  the agent never resolves a digest or tag to a half-deleted snapshot.
