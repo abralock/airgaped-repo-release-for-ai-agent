@@ -123,3 +123,29 @@ def test_checkout_symlink_kept_as_link(tmp_path, make_repo):
     with tarfile.open(out) as t:
         m = t.getmember("ln")
         assert m.issym() and m.linkname == "a.txt"
+
+
+def test_checkout_refuses_uninitialized_submodule(tmp_path, make_repo):
+    import subprocess
+    sub, _ = make_repo(tmp_path / "subsrc", {"lib/x.py": "1"})
+    sup_dir = tmp_path / "sup"
+    sup_dir.mkdir()
+    repo, _ = make_repo(sup_dir, {"main.py": "m"})
+    git(repo, "submodule", "add", str(sub), "vendor/sub")
+    git(repo, "commit", "-q", "-m", "add sub")
+    clone = tmp_path / "clone"
+    subprocess.run(["git", "clone", "-q", str(repo), str(clone)], check=True)
+    out = tmp_path / "o.tar.gz"
+    with pytest.raises(ExportError) as ei:
+        export_from_checkout(clone, out)
+    assert ei.value.reason == "submodule-not-initialized"
+    assert not out.exists()
+
+
+def test_checkout_raises_on_missing_tracked_file(tmp_path, make_repo):
+    repo, _ = make_repo(tmp_path, {"a.txt": "x"})
+    (repo / "a.txt").unlink()
+    out = tmp_path / "o.tar.gz"
+    with pytest.raises(OSError):
+        export_from_checkout(repo, out)
+    assert not out.exists()

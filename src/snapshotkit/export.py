@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import os
 import subprocess
+import tempfile
 import tarfile
 from collections import defaultdict
 from collections.abc import Sequence
@@ -21,7 +22,9 @@ _LFS_MAGIC = b"version https://git-lfs.github.com/spec/v1"
 class ExportError(Exception):
     def __init__(
         self,
-        reason: Literal["export-subst", "needs-checkout-mode", "lfs-not-pulled"],
+        reason: Literal[
+            "export-subst", "needs-checkout-mode", "lfs-not-pulled", "submodule-not-initialized"
+        ],
         message: str,
     ) -> None:
         super().__init__(message)
@@ -66,25 +69,34 @@ def export_from_archive(
 
     entries: list[Entry] = []
     denied: list[str] = []
-    proc = subprocess.Popen(
-        ["git", "archive", "--format=tar", tree], cwd=repo_dir,
-        stdout=subprocess.PIPE, stderr=subprocess.PIPE,
-    )
-    assert proc.stdout is not None
-    with tarfile.open(fileobj=proc.stdout, mode="r|") as tar:
-        for m in tar:
-            if is_denied(m.name, patterns):
-                if m.isfile() or m.issym():
-                    denied.append(m.name)
-                continue
-            if m.issym():
-                entries.append(Entry(m.name, m.mode, None, m.linkname))
-            elif m.isfile():
-                f = tar.extractfile(m)
-                entries.append(Entry(m.name, m.mode, f.read() if f else b""))
-    err = proc.stderr.read() if proc.stderr else b""
-    if proc.wait() != 0:
-        raise RuntimeError(f"git archive failed: {err.decode(errors='replace')}")
+    with tempfile.TemporaryFile() as errf:
+        proc = subprocess.Popen(
+            ["git", "archive", "--format=tar", tree], cwd=repo_dir,
+            stdout=subprocess.PIPE, stderr=errf,
+        )
+        try:
+            assert proc.stdout is not None
+            with tarfile.open(fileobj=proc.stdout, mode="r|") as tar:
+                for m in tar:
+                    if is_denied(m.name, patterns):
+                        if m.isfile() or m.issym():
+                            denied.append(m.name)
+                        continue
+                    if m.issym():
+                        entries.append(Entry(m.name, m.mode, None, m.linkname))
+                    elif m.isfile():
+                        f = tar.extractfile(m)
+                        entries.append(Entry(m.name, m.mode, f.read() if f else b""))
+            rc = proc.wait()
+        finally:
+            if proc.poll() is None:
+                proc.kill()
+                proc.wait()
+            if proc.stdout:
+                proc.stdout.close()
+        if rc != 0:
+            errf.seek(0)
+            raise RuntimeError(f"git archive failed: {errf.read().decode(errors='replace')}")
     return _finish(entries, denied, out_path)
 
 
@@ -156,17 +168,18 @@ def export_from_checkout(
         if p in ignored or any(a in ignored for a in _ancestors(p)):
             continue
         fs = repo_dir / p
-        try:
-            if fs.is_symlink():
-                target = os.readlink(fs)
-                is_link, data = True, None
-            elif fs.is_file():
-                is_link, target = False, None
-                data = fs.read_bytes()
-            else:
-                continue
-        except OSError:
-            continue
+        if fs.is_symlink():
+            target = os.readlink(fs)
+            is_link, data = True, None
+        elif fs.is_dir():
+            raise ExportError(
+                "submodule-not-initialized",
+                f"{p} is a submodule that is not initialized; check out with submodules "
+                f"recursive / {_HINT}",
+            )
+        else:
+            is_link, target = False, None
+            data = fs.read_bytes()  # raises OSError if missing or unreadable
         if is_denied(p, patterns):
             denied.append(p)
             continue
