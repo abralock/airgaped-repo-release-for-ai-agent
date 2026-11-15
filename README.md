@@ -34,6 +34,12 @@ docker compose -f tests/integration/compose.yaml down
 
 Some tests need the `gitleaks` binary on `PATH`.
 
+The scanner config `config/gitleaks.toml` is a vendored copy of gitleaks v8.21.2's default
+rules with the global path allowlist removed, so every published file is scanned; files
+gitleaks cannot inspect (PDF, office documents, archives) are kept out of snapshots by the
+denylist in `src/snapshotkit/denylist.py` (full list in
+[onboarding, section A step 4](docs/runbooks/onboarding.md)).
+
 ## Building images
 
 ```sh

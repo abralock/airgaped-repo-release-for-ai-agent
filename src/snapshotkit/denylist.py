@@ -7,6 +7,11 @@ from fnmatch import fnmatchcase
 
 DEFAULT_DENYLIST: tuple[str, ...] = (
     ".env*", "*.pem", "*.key", "*.p12", "*.pfx", "id_rsa*", "*.kdbx", "secrets.*", ".git*",
+    # Containers and documents gitleaks cannot inspect (and the agent cannot read):
+    # never published, because their bytes could not be scanned.
+    "*.pdf", "*.doc", "*.docx", "*.xls", "*.xlsx", "*.ppt", "*.pptx", "*.odt", "*.ods",
+    "*.zip", "*.jar", "*.war", "*.ear", "*.tar", "*.tgz", "*.gz", "*.bz2", "*.xz", "*.7z",
+    "*.rar", "*.whl",
 )
 
 _ALLOWED_FINAL = {".gitignore", ".gitattributes"}

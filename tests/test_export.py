@@ -149,3 +149,16 @@ def test_checkout_raises_on_missing_tracked_file(tmp_path, make_repo):
     with pytest.raises(OSError):
         export_from_checkout(repo, out)
     assert not out.exists()
+
+
+@pytest.mark.parametrize("mode", ["archive", "checkout"])
+def test_unscannable_documents_and_gitleaksignore_excluded(tmp_path, make_repo, mode):
+    repo, sha = make_repo(tmp_path, {"doc.pdf": b"%PDF-1.4 x", ".gitleaksignore": "a:b:1\n",
+                                     "src/app.py": "x"})
+    out = tmp_path / "o.tar.gz"
+    if mode == "archive":
+        stats = export_from_archive(repo, sha, out)
+    else:
+        stats = export_from_checkout(repo, out)
+    assert names(out) == ["src/app.py"]
+    assert {"doc.pdf", ".gitleaksignore"} <= set(stats.files_denied)

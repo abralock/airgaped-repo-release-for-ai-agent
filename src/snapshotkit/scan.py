@@ -49,6 +49,10 @@ def run_gitleaks(
     # gitleaks runs inside tree_dir and scans "." so fingerprints are relative to the
     # snapshot root (cfg.py:rule:1) and a committed .gitleaksignore matches any workdir.
     # Paths handed to gitleaks are made absolute because cwd changes.
+    # gitleaks also auto-loads <source>/.gitleaksignore, i.e. ./.gitleaksignore in the
+    # scanned tree. That file would silently suppress findings, which is why the export
+    # denylist must keep `.git*`: the tree never contains it, and the only ignore file
+    # used is the one passed explicitly below (built from the committed blob).
     tree_dir = Path(tree_dir)
     report_path = Path(report_path).resolve()
     config = Path(config).resolve()

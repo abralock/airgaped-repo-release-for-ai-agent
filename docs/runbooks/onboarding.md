@@ -49,6 +49,15 @@
    - The image is a multi-arch index: ADO `multiArch: true`; GitLab `SNAPSHOT_MULTI_ARCH: "true"`.
      The step fetches the index manifest with `crane` so each platform digest resolves to the
      snapshot.
+   - Files never published (denylist, `src/snapshotkit/denylist.py`, matched against every
+     path component): `.env*`, `*.pem`, `*.key`, `*.p12`, `*.pfx`, `id_rsa*`, `*.kdbx`,
+     `secrets.*`, `.git*` (except `.gitignore` / `.gitattributes`), and containers or
+     documents gitleaks cannot inspect: `*.pdf`, `*.doc`, `*.docx`, `*.xls`, `*.xlsx`,
+     `*.ppt`, `*.pptx`, `*.odt`, `*.ods`, `*.zip`, `*.jar`, `*.war`, `*.ear`, `*.tar`,
+     `*.tgz`, `*.gz`, `*.bz2`, `*.xz`, `*.7z`, `*.rar`, `*.whl`. Everything else, including
+     `node_modules/`, `vendor/` and lock files, is scanned: `config/gitleaks.toml` is
+     upstream's v8.21.2 rule set without its global path allowlist (only image and font
+     files are skipped).
 
 5. **Run the pipeline and check exit 0.** The publish step logs
    `snapshot-publish: published project=... digest=sha256:...`. Exit `10` = secrets found,

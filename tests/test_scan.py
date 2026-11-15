@@ -196,3 +196,34 @@ def test_real_gitleaks_fingerprint_is_relative_to_tree(tmp_path):
     ign = tmp_path / "ign"
     ign.write_text("cfg.py:aws-access-token:1\n")
     assert run_gitleaks(tree, cfg, tmp_path / "r2.json", ignore_file=ign).clean is True
+
+
+@pytest.mark.gitleaks
+@pytest.mark.skipif(shutil.which("gitleaks") is None, reason="gitleaks not installed")
+@pytest.mark.parametrize("rel", [
+    "node_modules/x/index.js", "package-lock.json", "go.sum", "vendor/a.go",
+    "vendor/github.com/x/a.go", "poetry.lock",
+])
+def test_real_gitleaks_scans_paths_upstream_default_allowlists(tmp_path, rel):
+    # Upstream's default global path allowlist skips these, but they are published.
+    tree = tmp_path / "tree"
+    target = tree / rel
+    target.parent.mkdir(parents=True)
+    key_id = "AKIA" + "QYLPMN5HFIQR7XYZ"
+    target.write_text(f'aws_access_key_id = "{key_id}"\n')
+    cfg = Path(__file__).parent.parent / "config" / "gitleaks.toml"
+    res = run_gitleaks(tree, cfg, tmp_path / "r.json")
+    assert res.clean is False and res.findings >= 1
+
+
+def test_config_is_vendored_without_global_path_allowlist():
+    import tomllib
+    cfg = Path(__file__).parent.parent / "config" / "gitleaks.toml"
+    text = cfg.read_text()
+    data = tomllib.loads(text)
+    assert "extend" not in data  # no useDefault: the rules are vendored
+    assert "gitleaks v8.21.2" in text
+    assert len(data["rules"]) > 100
+    assert data["allowlist"]["paths"] == [
+        r"\.(png|jpe?g|gif|ico|bmp|webp|woff2?|ttf|otf|eot)$"
+    ]
