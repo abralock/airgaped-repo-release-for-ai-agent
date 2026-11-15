@@ -1,4 +1,6 @@
+import ipaddress
 import json
+import os
 import shutil
 import subprocess
 from pathlib import Path
@@ -9,9 +11,21 @@ import yaml
 ROOT = Path(__file__).resolve().parent.parent
 DEPLOY = ROOT / "deploy"
 
-needs_kubectl = pytest.mark.skipif(
-    shutil.which("kubectl") is None, reason="kubectl not installed; cannot render kustomize"
-)
+_REQUIRE = bool(os.environ.get("CI")) or os.environ.get("SNAPSHOT_TEST_REQUIRE_KUBECTL") == "1"
+_HAVE_KUBECTL = shutil.which("kubectl") is not None
+if _REQUIRE and not _HAVE_KUBECTL:
+
+    def needs_kubectl(fn):
+        def fail(*a, **k):
+            pytest.fail("kubectl is required (CI or SNAPSHOT_TEST_REQUIRE_KUBECTL=1) but missing")
+
+        fail.__name__ = fn.__name__
+        return fail
+
+else:
+    needs_kubectl = pytest.mark.skipif(
+        not _HAVE_KUBECTL, reason="kubectl not installed; cannot render kustomize"
+    )
 
 
 def render(path: Path) -> list[dict]:
@@ -121,29 +135,113 @@ def test_tool_mounts_cluster_secret_with_items(agent):
     assert {"secretRef": {"name": "snapshot-store-reader"}} in c["envFrom"]
 
 
+def _pod_specs(agent):
+    for doc in of_kind(agent, "Deployment"):
+        yield doc["spec"]["template"]["spec"]
+    for doc in of_kind(agent, "CronJob"):
+        yield doc["spec"]["jobTemplate"]["spec"]["template"]["spec"]
+
+
 @needs_kubectl
 def test_no_git_platform_env_names(agent):
     forbidden = ("AZURE", "ADO", "GITLAB", "GIT_")
-    for kind in ("Deployment", "CronJob"):
-        for doc in of_kind(agent, kind):
-            spec = doc["spec"]
-            pod = (
-                spec["template"]["spec"]
-                if kind == "Deployment"
-                else spec["jobTemplate"]["spec"]["template"]["spec"]
+    for pod in _pod_specs(agent):
+        for c in pod["containers"]:
+            for e in c.get("env", []):
+                assert not any(f in e["name"] for f in forbidden), e["name"]
+            for ref in c.get("envFrom", []):
+                name = ref["secretRef"]["name"].upper()
+                assert not any(f in name for f in forbidden), name
+            assert {r["secretRef"]["name"] for r in c["envFrom"]} <= {
+                "snapshot-store-reader",
+                "snapshot-store-admin",
+            }
+
+
+def _norm(rule: dict) -> tuple:
+    peers = []
+    for t in rule["to"]:
+        if "ipBlock" in t:
+            peers.append(("cidr", t["ipBlock"]["cidr"]))
+        else:
+            peers.append(
+                (
+                    "pods",
+                    json.dumps(t["namespaceSelector"]["matchLabels"], sort_keys=True),
+                    json.dumps(t["podSelector"]["matchLabels"], sort_keys=True),
+                )
             )
-            for c in pod["containers"]:
-                for e in c.get("env", []):
-                    assert not any(f in e["name"] for f in forbidden), e["name"]
+    ports = [(p["protocol"], p["port"]) for p in rule["ports"]]
+    return (tuple(sorted(peers)), tuple(sorted(ports)))
+
+
+def _check_closed(policy: dict):
+    for rule in policy["spec"]["egress"]:
+        assert rule.get("to"), "egress rule without peers allows everything"
+        assert rule.get("ports"), "egress rule without ports allows every port"
+        for t in rule["to"]:
+            if "ipBlock" in t:
+                net = ipaddress.ip_network(t["ipBlock"]["cidr"])
+                assert net.prefixlen > 0, t
+            else:
+                assert t.get("namespaceSelector", {}).get("matchLabels")
+                assert t.get("podSelector", {}).get("matchLabels")
+
+
+DNS = (
+    (
+        (
+            "pods",
+            '{"kubernetes.io/metadata.name": "kube-system"}',
+            '{"k8s-app": "kube-dns"}',
+        ),
+    ),
+    (("TCP", 53), ("UDP", 53)),
+)
 
 
 @needs_kubectl
 def test_network_policies_have_no_open_egress(agent):
     policies = of_kind(agent, "NetworkPolicy")
-    assert policies
+    assert len(policies) == 2
     for p in policies:
-        assert "0.0.0.0/0" not in json.dumps(p)
         assert set(p["spec"]["policyTypes"]) >= {"Egress"}
+        _check_closed(p)
+
+
+@needs_kubectl
+def test_tool_egress_is_exactly_dns_store_and_api_servers(agent):
+    p = named(agent, "NetworkPolicy", "snapshot-tool")
+    got = {_norm(r) for r in p["spec"]["egress"]}
+    expected = {
+        DNS,
+        ((("cidr", "10.20.0.5/32"),), (("TCP", 9000),)),
+        ((("cidr", "10.30.0.10/32"), ("cidr", "10.31.0.10/32")), (("TCP", 6443),)),
+    }
+    assert got == expected
+    assert len(p["spec"]["egress"]) == 3
+
+
+@needs_kubectl
+def test_agent_egress_is_exactly_tool_dns_and_model(agent):
+    p = named(agent, "NetworkPolicy", "agent-egress")
+    got = {_norm(r) for r in p["spec"]["egress"]}
+    expected = {
+        (
+            (
+                (
+                    "pods",
+                    '{"kubernetes.io/metadata.name": "code-snapshots"}',
+                    '{"app.kubernetes.io/name": "snapshot-mcp"}',
+                ),
+            ),
+            (("TCP", 8080),),
+        ),
+        DNS,
+        ((("cidr", "10.40.0.0/28"),), (("TCP", 443),)),
+    }
+    assert got == expected
+    assert len(p["spec"]["egress"]) == 3
 
 
 @needs_kubectl

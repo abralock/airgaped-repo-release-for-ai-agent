@@ -30,6 +30,7 @@ patches:
       - op: add
         path: /spec/jobTemplate/spec/template/spec/volumes/0/secret/items/-
         value: {key: prod-a-token, path: prod-a/token}
+  # NetworkPolicy egress is replaced as a whole list (order-independent of the base).
   - target:
       kind: NetworkPolicy
       name: snapshot-tool
@@ -41,22 +42,27 @@ patches:
         path: /spec/ingress/0/from/0/podSelector/matchLabels/app.kubernetes.io~1name
         value: ai-agent
       - op: replace
-        path: /spec/egress/1/to/0/ipBlock/cidr
-        value: 10.20.0.5/32
-      - op: replace
-        path: /spec/egress/1/ports/0/port
-        value: 9000
-      - op: replace
-        path: /spec/egress/2/to/0/ipBlock/cidr
-        value: 10.30.0.10/32
-  # prod-b API server (second cluster in clusters.yaml)
-  - target:
-      kind: NetworkPolicy
-      name: snapshot-tool
-    patch: |-
-      - op: add
-        path: /spec/egress/2/to/-
-        value: {ipBlock: {cidr: 10.31.0.10/32}}
+        path: /spec/egress
+        value:
+        - to:
+            - namespaceSelector:
+                matchLabels:
+                  kubernetes.io/metadata.name: kube-system
+              podSelector:
+                matchLabels:
+                  k8s-app: kube-dns
+          ports:
+            - {protocol: UDP, port: 53}
+            - {protocol: TCP, port: 53}
+        - to:
+            - ipBlock: {cidr: 10.20.0.5/32}
+          ports:
+            - {protocol: TCP, port: 9000}
+        - to:
+            - ipBlock: {cidr: 10.30.0.10/32}
+            - ipBlock: {cidr: 10.31.0.10/32}
+          ports:
+            - {protocol: TCP, port: 6443}
   - target:
       kind: NetworkPolicy
       name: agent-egress
@@ -65,8 +71,28 @@ patches:
         path: /metadata/namespace
         value: ai-agent
       - op: replace
-        path: /spec/egress/2/to/0/ipBlock/cidr
-        value: 10.40.0.0/28
-      - op: replace
-        path: /spec/egress/2/ports/0/port
-        value: 443
+        path: /spec/egress
+        value:
+        - to:
+            - namespaceSelector:
+                matchLabels:
+                  kubernetes.io/metadata.name: code-snapshots
+              podSelector:
+                matchLabels:
+                  app.kubernetes.io/name: snapshot-mcp
+          ports:
+            - {protocol: TCP, port: 8080}
+        - to:
+            - namespaceSelector:
+                matchLabels:
+                  kubernetes.io/metadata.name: kube-system
+              podSelector:
+                matchLabels:
+                  k8s-app: kube-dns
+          ports:
+            - {protocol: UDP, port: 53}
+            - {protocol: TCP, port: 53}
+        - to:
+            - ipBlock: {cidr: 10.40.0.0/28}
+          ports:
+            - {protocol: TCP, port: 443}
