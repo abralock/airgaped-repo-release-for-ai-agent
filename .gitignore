@@ -3,3 +3,9 @@ __pycache__/
 *.egg-info/
 .venv/
 .pytest_cache/
+
+# archify receipts (contain local absolute paths)
+docs/architecture/*.finalize.json
+docs/architecture/*.finalize-summary.json
+docs/architecture/*.browser-check.json
+docs/architecture/*.delivery.json

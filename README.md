@@ -8,6 +8,12 @@ by the image digest. An MCP tool lets the existing agent look up which digest ru
 production and browse that snapshot, without the agent ever holding source-control
 credentials or network access to them.
 
+## Architecture
+
+[Architecture diagram](docs/architecture/snapshotkit-architecture.html) (download and open in a browser):
+the CI publish path, the snapshot store, and how the agent reads snapshots through `snapshot-mcp`.
+Its source is `docs/architecture/snapshotkit.architecture.json`; see `CLAUDE.md` for how it is kept up to date.
+
 ## Components
 
 | Component | Where | What it does |
