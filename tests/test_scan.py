@@ -58,7 +58,7 @@ def test_exit_1_without_report_raises(tmp_path, tree):
     fake, _ = make_fake(tmp_path, 1, stderr="boom internal")
     with pytest.raises(ScannerError) as e:
         run_gitleaks(tree, tmp_path / "c.toml", tmp_path / "r.json", gitleaks_bin=str(fake))
-    assert "1" in str(e.value) and "boom internal" in str(e.value)
+    assert "exit code 1" in str(e.value) and "boom internal" in str(e.value)
 
 
 def test_exit_1_with_garbage_report_raises_without_leaking_it(tmp_path, tree):
@@ -80,11 +80,30 @@ def test_exit_0_with_empty_list_report_is_clean(tmp_path, tree):
     assert res.clean is True and res.findings == 0
 
 
+def test_exit_0_with_garbage_report_raises(tmp_path, tree):
+    fake, _ = make_fake(tmp_path, 0, report="SECRETCONTENT not json")
+    with pytest.raises(ScannerError) as e:
+        run_gitleaks(tree, tmp_path / "c.toml", tmp_path / "r.json", gitleaks_bin=str(fake))
+    assert "SECRETCONTENT" not in str(e.value)
+
+
+def test_exit_0_with_nonempty_report_raises(tmp_path, tree):
+    fake, _ = make_fake(tmp_path, 0, report='[{"a":1}]')
+    with pytest.raises(ScannerError):
+        run_gitleaks(tree, tmp_path / "c.toml", tmp_path / "r.json", gitleaks_bin=str(fake))
+
+
+def test_exit_1_with_empty_list_report_raises(tmp_path, tree):
+    fake, _ = make_fake(tmp_path, 1, report="[]")
+    with pytest.raises(ScannerError):
+        run_gitleaks(tree, tmp_path / "c.toml", tmp_path / "r.json", gitleaks_bin=str(fake))
+
+
 def test_unexpected_exit_raises(tmp_path, tree):
     fake, _ = make_fake(tmp_path, 2, stderr="kaput")
     with pytest.raises(ScannerError) as e:
         run_gitleaks(tree, tmp_path / "c.toml", tmp_path / "r.json", gitleaks_bin=str(fake))
-    assert "2" in str(e.value) and "kaput" in str(e.value)
+    assert "exit code 2" in str(e.value) and "kaput" in str(e.value)
 
 
 def test_missing_binary_raises(tmp_path, tree):

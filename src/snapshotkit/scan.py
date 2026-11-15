@@ -59,8 +59,17 @@ def run_gitleaks(
         argv += ["--gitleaks-ignore-path", str(ignore_file)]
     proc = _run(argv)
     if proc.returncode == 0:
-        report = _read_report(report_path) if report_path.exists() else []
-        return ScanResult(True, len(report) if report else 0, report_path)
+        if report_path.exists():
+            report = _read_report(report_path)
+            if report is None:
+                raise ScannerError(
+                    "gitleaks exited 0 but its report is not a parseable JSON list"
+                )
+            if report:
+                raise ScannerError(
+                    f"gitleaks exited 0 but its report lists {len(report)} findings"
+                )
+        return ScanResult(True, 0, report_path)
     if proc.returncode == 1:
         report = _read_report(report_path)
         if report is not None and report:
