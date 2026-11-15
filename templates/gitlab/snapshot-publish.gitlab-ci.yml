@@ -9,6 +9,7 @@
 .snapshot-publish:
   image: $SNAPSHOT_PUBLISHER_IMAGE
   allow_failure: true
+  timeout: 30m
   variables:
     GIT_DEPTH: "1"
     SNAPSHOT_MODE: archive

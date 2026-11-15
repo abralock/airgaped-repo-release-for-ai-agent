@@ -22,11 +22,16 @@ def _tail(text: str, limit: int = 500) -> str:
     return text.strip()[-limit:]
 
 
-def _run(argv: list[str], cwd: Path | None = None) -> subprocess.CompletedProcess:
+def _run(
+    argv: list[str], timeout_seconds: int, cwd: Path | None = None
+) -> subprocess.CompletedProcess:
     try:
         return subprocess.run(
-            argv, capture_output=True, text=True, check=False, cwd=cwd
+            argv, capture_output=True, text=True, check=False, cwd=cwd,
+            timeout=timeout_seconds,
         )
+    except subprocess.TimeoutExpired as e:
+        raise ScannerError(f"gitleaks timed out after {timeout_seconds} s") from e
     except OSError as e:
         raise ScannerError(f"cannot run {argv[0]}: {e}") from e
 
@@ -45,6 +50,7 @@ def run_gitleaks(
     report_path: Path,
     ignore_file: Path | None = None,
     gitleaks_bin: str = "gitleaks",
+    timeout_seconds: int = 900,
 ) -> ScanResult:
     # gitleaks runs inside tree_dir and scans "." so fingerprints are relative to the
     # snapshot root (cfg.py:rule:1) and a committed .gitleaksignore matches any workdir.
@@ -68,7 +74,7 @@ def run_gitleaks(
     ]
     if ignore_file is not None:
         argv += ["--gitleaks-ignore-path", str(Path(ignore_file).resolve())]
-    proc = _run(argv, cwd=tree_dir)
+    proc = _run(argv, timeout_seconds, cwd=tree_dir)
     if proc.returncode == 0:
         if report_path.exists():
             report = _read_report(report_path)
@@ -90,8 +96,8 @@ def run_gitleaks(
     )
 
 
-def gitleaks_version(gitleaks_bin: str = "gitleaks") -> str:
-    proc = _run([gitleaks_bin, "version"])
+def gitleaks_version(gitleaks_bin: str = "gitleaks", timeout_seconds: int = 30) -> str:
+    proc = _run([gitleaks_bin, "version"], timeout_seconds)
     if proc.returncode != 0:
         raise ScannerError(
             f"gitleaks version failed with exit code {proc.returncode}: {_tail(proc.stderr)}"

@@ -227,3 +227,32 @@ def test_config_is_vendored_without_global_path_allowlist():
     assert data["allowlist"]["paths"] == [
         r"\.(png|jpe?g|gif|ico|bmp|webp|woff2?|ttf|otf|eot)$"
     ]
+
+
+def _sleeper(tmp_path) -> Path:
+    script = tmp_path / "slow-gitleaks"
+    script.write_text("#!/bin/sh\nexec sleep 30\n")  # exec: the killed pid is the sleeper
+    script.chmod(0o755)
+    return script
+
+
+def test_scan_timeout_raises_scanner_error(tmp_path, tree):
+    import time
+    start = time.monotonic()
+    with pytest.raises(ScannerError) as e:
+        run_gitleaks(tree, tmp_path / "c.toml", tmp_path / "r.json",
+                     gitleaks_bin=str(_sleeper(tmp_path)), timeout_seconds=1)
+    assert time.monotonic() - start < 10
+    assert str(e.value) == "gitleaks timed out after 1 s"
+
+
+def test_version_timeout_raises_scanner_error(tmp_path):
+    with pytest.raises(ScannerError) as e:
+        gitleaks_version(str(_sleeper(tmp_path)), timeout_seconds=1)
+    assert "timed out after 1 s" in str(e.value)
+
+
+def test_default_timeouts():
+    import inspect
+    assert inspect.signature(run_gitleaks).parameters["timeout_seconds"].default == 900
+    assert inspect.signature(gitleaks_version).parameters["timeout_seconds"].default == 30

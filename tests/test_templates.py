@@ -40,6 +40,7 @@ def test_ado_job_settings():
     assert job["continueOnError"] is True
     assert job["container"]["image"] == "${{ parameters.publisherImage }}"
     assert "--user 0:0" in job["container"]["options"]
+    assert job["timeoutInMinutes"] == 30
 
 
 def test_ado_checkout():
@@ -80,6 +81,7 @@ def test_gitlab_job():
     doc = _load(GL)
     job = doc[".snapshot-publish"]
     assert job["allow_failure"] is True
+    assert job["timeout"] == "30m"
     assert job["variables"]["GIT_DEPTH"] == "1"
     assert job["variables"]["SNAPSHOT_MODE"] == "archive"
     assert job["variables"]["SNAPSHOT_PROJECT"] == "$CI_PROJECT_NAME"
