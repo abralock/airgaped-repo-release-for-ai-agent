@@ -48,6 +48,16 @@ CRANE_URL="${CRANE_URL:-$DEFAULT_CRANE_URL}"
 CRANE_SHA256_AMD64="${CRANE_SHA256_AMD64:-c14340087103ba9dadf61d45acd20675490fd0ccbd56ac7901fc1b502137f44b}"
 CRANE_SHA256_ARM64="${CRANE_SHA256_ARM64:-aff0db48825124c9331ea310057214bd4e92c01aa2e414d539e9659841d9422a}"
 
+# OCI source label: GHCR uses it to link the package to its repo. Set
+# IMAGE_SOURCE="" to omit (e.g. when pushing to an internal registry).
+IMAGE_SOURCE="${IMAGE_SOURCE-https://github.com/abralock/airgaped-repo-release-for-ai-agent}"
+SOURCE_ARGS=()
+if [ -n "$IMAGE_SOURCE" ]; then
+  SOURCE_ARGS=(--label "org.opencontainers.image.source=$IMAGE_SOURCE")
+  # Multi-arch images are linked via the index annotation.
+  if [ "$PUSH" = 1 ]; then SOURCE_ARGS+=(--annotation "index:org.opencontainers.image.source=$IMAGE_SOURCE"); fi
+fi
+
 if [ "$PUSH" = 1 ]; then
   OUTPUT=(--push)
 elif [[ "$PLATFORM" == *,* ]]; then
@@ -68,6 +78,7 @@ exec docker buildx build \
   --build-arg CRANE_URL="$CRANE_URL" \
   --build-arg CRANE_SHA256_AMD64="$CRANE_SHA256_AMD64" \
   --build-arg CRANE_SHA256_ARM64="$CRANE_SHA256_ARM64" \
+  ${SOURCE_ARGS[@]+"${SOURCE_ARGS[@]}"} \
   -t "$TAG" \
   "${OUTPUT[@]}" \
   "$ROOT"
