@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import dataclasses
+import functools
 import os
 import sys
 import traceback
@@ -45,6 +46,7 @@ _KNOWN_ERRORS = (
 def _safe(fn: Callable[..., dict]) -> Callable[..., dict]:
     """Handlers return a dict and never raise."""
 
+    @functools.wraps(fn)
     def wrapper(*args, **kwargs) -> dict:
         try:
             return fn(*args, **kwargs)
@@ -54,8 +56,6 @@ def _safe(fn: Callable[..., dict]) -> Callable[..., dict]:
             traceback.print_exc(file=sys.stderr)
             return {"error": "internal error"}
 
-    wrapper.__name__ = fn.__name__
-    wrapper.__doc__ = fn.__doc__
     return wrapper
 
 

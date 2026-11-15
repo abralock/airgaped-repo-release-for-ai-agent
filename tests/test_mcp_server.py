@@ -112,3 +112,34 @@ def test_unexpected_errors_are_opaque(readers, cache, monkeypatch, capsys):
     h.get_snapshot(DIGEST)
     assert h.list_files(SNAP_ID) == {"error": "internal error"}
     assert "secret detail" in capsys.readouterr().err
+
+
+def test_tool_input_schemas(readers, cache):
+    server = build_server(*readers, cache)
+    schemas = {t.name: t.input_schema for t in asyncio.run(server.list_tools())}
+    expected = {
+        "find_deployed_version": ({"namespace", "workload", "cluster"}, {"namespace", "workload"}),
+        "get_snapshot": ({"ref"}, {"ref"}),
+        "list_files": ({"snapshot_id", "subdir"}, {"snapshot_id"}),
+        "read_file": ({"snapshot_id", "path"}, {"snapshot_id", "path"}),
+        "search_code": ({"snapshot_id", "pattern", "glob"}, {"snapshot_id", "pattern"}),
+    }
+    for name, (props, required) in expected.items():
+        assert set(schemas[name]["properties"]) == props, name
+        assert set(schemas[name].get("required", [])) == required, name
+
+
+def test_call_tool_round_trip(readers, cache):
+    from mcp.client import Client
+
+    server = build_server(*readers, cache)
+
+    async def run():
+        async with Client(server) as c:
+            snap = await c.call_tool("get_snapshot", {"ref": DIGEST})
+            read = await c.call_tool("read_file", {"snapshot_id": SNAP_ID, "path": "src/app.py"})
+            return snap, read
+
+    snap, read = asyncio.run(run())
+    assert json.loads(snap.content[0].text)["snapshot_id"] == SNAP_ID
+    assert json.loads(read.content[0].text)["content"] == "print(1)\n"
