@@ -16,7 +16,7 @@
 # Each archive is verified with sha256sum -c against the *_SHA256_<ARCH> arg
 # for its architecture; the build fails if that arg is empty.
 #
-# Targets: `publisher` (this file); Task 11 adds `tool` on top of `app`.
+# Targets: `publisher` (CI image) and `tool` (MCP server), both on top of `app`.
 
 ARG BASE_IMAGE
 
@@ -72,3 +72,10 @@ COPY config/gitleaks.toml /etc/snapshotkit/gitleaks.toml
 USER 10001
 WORKDIR /home/snapshot
 CMD ["/bin/sh"]
+
+# ---- tool: MCP server; no git, scanner or crane ----------------------------
+FROM app AS tool
+USER 10001
+WORKDIR /home/snapshot
+EXPOSE 8080
+ENTRYPOINT ["snapshot-mcp"]

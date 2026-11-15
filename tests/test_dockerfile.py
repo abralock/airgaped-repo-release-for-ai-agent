@@ -53,7 +53,24 @@ def test_publisher_target_runs_non_root_with_config():
     assert "/etc/snapshotkit/gitleaks.toml" in text
 
 
+def _stage(name: str) -> str:
+    parts = re.split(r"^FROM .*$", _text(), flags=re.MULTILINE)
+    heads = re.findall(r"^FROM .* AS (\S+)", _text(), flags=re.MULTILINE)
+    return dict(zip(heads, parts[1:], strict=True))[name]
+
+
 def test_publisher_has_no_entrypoint():
     # CI container jobs (Azure DevOps, GitLab) need an image without ENTRYPOINT.
-    assert not re.search(r"^ENTRYPOINT\b", _text(), flags=re.MULTILINE)
-    assert re.search(r'^CMD \["/bin/sh"\]', _text(), flags=re.MULTILINE)
+    publisher = _stage("publisher")
+    assert "ENTRYPOINT" not in publisher
+    assert re.search(r'^CMD \["/bin/sh"\]', publisher, flags=re.MULTILINE)
+
+
+def test_tool_target_is_minimal_non_root_mcp_server():
+    assert re.search(r"^FROM app AS tool", _text(), flags=re.MULTILINE)
+    tool = _stage("tool")
+    assert 'ENTRYPOINT ["snapshot-mcp"]' in tool
+    assert "USER 10001" in tool
+    assert "EXPOSE 8080" in tool
+    for forbidden in ("git", "gitleaks", "crane", "apt-get"):
+        assert not re.search(rf"\b{forbidden}\b", tool), forbidden
