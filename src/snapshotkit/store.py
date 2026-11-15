@@ -94,6 +94,7 @@ class S3Store:
         region: str = "us-east-1",
     ) -> None:
         import boto3
+        from botocore.config import Config
 
         self._bucket = bucket
         self._client = boto3.client(
@@ -102,6 +103,15 @@ class S3Store:
             aws_access_key_id=access_key,
             aws_secret_access_key=secret_key,
             region_name=region,
+            # Defaults that suit S3-compatible stores (MinIO, Ceph, appliances), not
+            # just AWS: no default CRC32 trailers or response checksum validation,
+            # path-style addressing (no bucket DNS names), bounded retries.
+            config=Config(
+                request_checksum_calculation="when_required",
+                response_checksum_validation="when_required",
+                s3={"addressing_style": "path"},
+                retries={"max_attempts": 3, "mode": "standard"},
+            ),
         )
 
     @classmethod

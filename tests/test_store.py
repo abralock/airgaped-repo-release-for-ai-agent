@@ -90,3 +90,23 @@ def test_list_keys_filters_by_prefix():
         s.put(k, b"x")
     assert sorted(s.list_keys("a/")) == ["a/1", "a/2"]
     assert sorted(s.list_keys("")) == ["a/1", "a/2", "b/1"]
+
+
+def test_s3_client_config_suits_non_aws_stores():
+    from snapshotkit.store import S3Store
+    s = S3Store("http://127.0.0.1:1", "code-snapshots", "ak", "sk")
+    cfg = s._client.meta.config
+    assert cfg.request_checksum_calculation == "when_required"
+    assert cfg.response_checksum_validation == "when_required"
+    assert cfg.s3 == {"addressing_style": "path"}
+    # botocore stores retries={"max_attempts": 3} as 3 retries + 1 initial attempt
+    assert cfg.retries == {"total_max_attempts": 4, "mode": "standard"}
+
+
+def test_boto_minimum_versions_pinned():
+    import tomllib
+    from pathlib import Path
+    deps = tomllib.loads((Path(__file__).parent.parent / "pyproject.toml").read_text())[
+        "project"]["dependencies"]
+    # 1.36.0: first botocore with request_checksum_calculation (IfNoneMatch is older)
+    assert "boto3>=1.36.0" in deps and "botocore>=1.36.0" in deps
