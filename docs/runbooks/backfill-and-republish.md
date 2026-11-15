@@ -128,33 +128,37 @@ is set, notifies the owner. If the finding is a real secret, rotate it and fix t
 code; that is not this runbook. If it is a false positive:
 
 1. **A reviewer confirms the finding.** `snapshot-publish` only logs the finding count, so
-   list the findings by scanning the same export the publisher scans. Gitleaks fingerprints
-   include the absolute path of the scanned tree, so use a fixed path (`/tmp/wd/tree`; the
-   same path is pinned with `--workdir` in step 3):
+   list the findings by scanning the same export the publisher scans. The publisher runs
+   gitleaks from the snapshot root, so fingerprints are relative and independent of any
+   temp path; scan the same way:
 
    ```sh
    docker run --rm -v "$CLONE/repo:/repo:ro" -e HOME=/tmp \
      registry.internal/snapshotkit/publisher:1 \
      sh -c 'git config --global --add safe.directory /repo && mkdir -p /tmp/wd/tree \
        && git -C /repo archive "'"$SHA"'" | tar -x -C /tmp/wd/tree \
-       && gitleaks dir /tmp/wd/tree --config /etc/snapshotkit/gitleaks.toml \
+       && cd /tmp/wd/tree && gitleaks dir . --config /etc/snapshotkit/gitleaks.toml \
             --redact --no-banner --no-color --verbose'
    ```
 
    Each finding prints `RuleID`, `File`, and `Fingerprint`
-   (for example `/tmp/wd/tree/cfg.py:aws-access-token:1`). A second person (not the author)
+   (for example `cfg.py:aws-access-token:1`). A second person (not the author)
    confirms it is not a credential. (Files matched by the denylist, such as `.env`, are
    never published, so findings in them do not matter.) A real secret is rotated and
    removed instead; that is not this runbook.
-2. **The project adds it to `.gitleaksignore`** in its repo for future builds, and the
-   reviewer approves that change. Note: the exported snapshot excludes `.gitleaksignore`
-   (the denylist drops `.git*` files) and the templates do not pass `--gitleaks-ignore`,
-   so today the file is a reviewed record that a store admin feeds to the manual republish
-   below; it does not by itself change what the pipeline step scans.
+2. **The project commits the fingerprint to `.gitleaksignore`** at its repo root, one
+   fingerprint per line (for example `cfg.py:aws-access-token:1`), and the reviewer approves
+   that change. `snapshot-publish` reads the `.gitleaksignore` committed at the exported
+   commit (archive mode) or tracked in the checkout (checkout mode) and passes it to
+   gitleaks, so future builds publish without further action. An untracked file is never
+   used. The file itself is not part of the snapshot. The manifest records
+   `scan_result: clean`. The commit that adds the ignore entry must be the one built, so
+   this helps future builds, not the already-failed one.
 3. **A store admin republishes the already-deployed digest** from that reviewed list. Write
    the approved fingerprints, one per line, to `reviewed.gitleaksignore` and run the backfill
-   command with the ignore file mounted, `--gitleaks-ignore`, and `--workdir /tmp/wd` (so the
-   scanned path matches the fingerprints):
+   command with the ignore file mounted and `--gitleaks-ignore` (fingerprints are the same
+   relative form; no `--workdir` is needed). If the repo also commits a `.gitleaksignore`,
+   both are used (project first, then this one):
 
    ```sh
    docker run --rm \
@@ -166,8 +170,7 @@ code; that is not this runbook. If it is a false positive:
      sh -c 'git config --global --add safe.directory /repo && snapshot-publish \
        ... same flags as the backfill ... \
        --gitleaks-config /etc/snapshotkit/gitleaks.toml \
-       --gitleaks-ignore /reviewed.gitleaksignore \
-       --workdir /tmp/wd'
+       --gitleaks-ignore /reviewed.gitleaksignore'
    ```
 
    The manifest then records `scan_result: clean-with-reviewed-allowlist`. The scan still
@@ -177,8 +180,8 @@ code; that is not this runbook. If it is a false positive:
 
 Troubleshooting:
 
-- Exit `10` again: new findings remain, or the fingerprints do not match (they must start
-  with `/tmp/wd/tree/` and `--workdir /tmp/wd` must be set; a relative `cfg.py:rule:1` does not match).
+- Exit `10` again: new findings remain, or the fingerprints do not match (they must be
+  relative to the repo root, exactly as printed by the list command, e.g. `cfg.py:aws-access-token:1`).
 - Exit `11`: add `--mode checkout` (submodules or LFS).
 - Exit `1`: read stderr. Typical causes: store unreachable or wrong credentials,
   unknown commit in `--commit`, invalid `--project` or digest.

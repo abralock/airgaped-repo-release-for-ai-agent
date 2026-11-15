@@ -22,9 +22,11 @@ def _tail(text: str, limit: int = 500) -> str:
     return text.strip()[-limit:]
 
 
-def _run(argv: list[str]) -> subprocess.CompletedProcess:
+def _run(argv: list[str], cwd: Path | None = None) -> subprocess.CompletedProcess:
     try:
-        return subprocess.run(argv, capture_output=True, text=True, check=False)
+        return subprocess.run(
+            argv, capture_output=True, text=True, check=False, cwd=cwd
+        )
     except OSError as e:
         raise ScannerError(f"cannot run {argv[0]}: {e}") from e
 
@@ -44,10 +46,15 @@ def run_gitleaks(
     ignore_file: Path | None = None,
     gitleaks_bin: str = "gitleaks",
 ) -> ScanResult:
-    report_path = Path(report_path)
+    # gitleaks runs inside tree_dir and scans "." so fingerprints are relative to the
+    # snapshot root (cfg.py:rule:1) and a committed .gitleaksignore matches any workdir.
+    # Paths handed to gitleaks are made absolute because cwd changes.
+    tree_dir = Path(tree_dir)
+    report_path = Path(report_path).resolve()
+    config = Path(config).resolve()
     report_path.unlink(missing_ok=True)  # never trust a stale report
     argv = [
-        gitleaks_bin, "dir", str(tree_dir),
+        gitleaks_bin, "dir", ".",
         "--config", str(config),
         "--report-format", "json",
         "--report-path", str(report_path),
@@ -56,8 +63,8 @@ def run_gitleaks(
         "--no-banner",
     ]
     if ignore_file is not None:
-        argv += ["--gitleaks-ignore-path", str(ignore_file)]
-    proc = _run(argv)
+        argv += ["--gitleaks-ignore-path", str(Path(ignore_file).resolve())]
+    proc = _run(argv, cwd=tree_dir)
     if proc.returncode == 0:
         if report_path.exists():
             report = _read_report(report_path)

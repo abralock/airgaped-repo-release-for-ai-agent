@@ -7,6 +7,8 @@ from pathlib import Path
 
 import pytest
 
+import shutil
+
 from conftest import git
 from snapshotkit import publish
 from snapshotkit.publish import Outcome, PublishRequest, publish_snapshot
@@ -225,3 +227,119 @@ def test_main_invalid_source_platform_exits_1(monkeypatch):
     args = [a if a != "gitlab" else "github" for a in ARGS]
     assert publish.main(args) == 1
     assert calls
+
+
+def _recording_scanner(seen):
+    def scanner(tree, config, report, ignore=None):
+        seen["ignore"] = None if ignore is None else Path(ignore).read_text()
+        seen["tree_files"] = sorted(p.name for p in Path(tree).iterdir())
+        return ScanResult(True, 0, report)
+    return scanner
+
+
+def test_project_and_admin_ignore_files_are_combined(tmp_path, make_repo):
+    admin = tmp_path / "admin.ignore"
+    admin.write_text("admin:rule:2\n")
+    seen = {}
+    _, store, _ = go(
+        tmp_path, make_repo, scanner=_recording_scanner(seen), gitleaks_ignore=admin,
+        files={"a.txt": "x", ".gitleaksignore": "proj:rule:1\n"},
+    )
+    lines = seen["ignore"].split()
+    assert lines == ["proj:rule:1", "admin:rule:2"]
+    assert ".gitleaksignore" not in seen["tree_files"]
+    assert json.loads(store.get(manifest_key("proj", D)))["scan_result"] == "clean-with-reviewed-allowlist"
+
+
+def test_project_ignore_without_trailing_newline_still_combines(tmp_path, make_repo):
+    admin = tmp_path / "admin.ignore"
+    admin.write_text("admin:rule:2\n")
+    seen = {}
+    go(tmp_path, make_repo, scanner=_recording_scanner(seen), gitleaks_ignore=admin,
+       files={"a.txt": "x", ".gitleaksignore": "proj:rule:1"})
+    assert seen["ignore"].split() == ["proj:rule:1", "admin:rule:2"]
+
+
+def test_project_ignore_only_is_plain_clean(tmp_path, make_repo):
+    seen = {}
+    _, store, _ = go(tmp_path, make_repo, scanner=_recording_scanner(seen),
+                     files={"a.txt": "x", ".gitleaksignore": "proj:rule:1\n"})
+    assert seen["ignore"] == "proj:rule:1\n"
+    assert json.loads(store.get(manifest_key("proj", D)))["scan_result"] == "clean"
+
+
+def test_no_ignore_files_passes_none(tmp_path, make_repo):
+    seen = {}
+    go(tmp_path, make_repo, scanner=_recording_scanner(seen))
+    assert seen["ignore"] is None
+
+
+def test_untracked_gitleaksignore_not_used_in_archive_mode(tmp_path, make_repo):
+    repo, sha = make_repo(tmp_path, {"a.txt": "x"})
+    (repo / ".gitleaksignore").write_text("proj:rule:1\n")
+    seen = {}
+    publish_snapshot(mkreq(tmp_path, repo, sha), InMemoryStore(),
+                     scanner=_recording_scanner(seen), scanner_version=lambda: "8", now=NOW)
+    assert seen["ignore"] is None
+
+
+def test_checkout_mode_uses_only_tracked_gitleaksignore(tmp_path, make_repo):
+    repo, sha = make_repo(tmp_path, {"a.txt": "x"})
+    (repo / ".gitleaksignore").write_text("proj:rule:1\n")  # untracked
+    seen = {}
+    publish_snapshot(mkreq(tmp_path, repo, sha, mode="checkout"), InMemoryStore(),
+                     scanner=_recording_scanner(seen), scanner_version=lambda: "8", now=NOW)
+    assert seen["ignore"] is None
+    git(repo, "add", ".gitleaksignore")
+    publish_snapshot(mkreq(tmp_path, repo, sha, mode="checkout", workdir=tmp_path / "w2"),
+                     InMemoryStore(), scanner=_recording_scanner(seen),
+                     scanner_version=lambda: "8", now=NOW)
+    assert seen["ignore"] == "proj:rule:1\n"
+
+
+def _aws_repo_files(ignore: bool):
+    key_id = "AKIA" + "QYLPMN5HFIQR7XYZ"
+    files = {"cfg.py": f'aws_access_key_id = "{key_id}"\n'}
+    if ignore:
+        files[".gitleaksignore"] = "cfg.py:aws-access-token:1\n"
+    return files
+
+
+def _real(tmp_path, make_repo, files, **kw):
+    from snapshotkit.scan import run_gitleaks
+    repo, sha = make_repo(tmp_path, files)
+    cfg = Path(__file__).parent.parent / "config" / "gitleaks.toml"
+    store = Recording()
+    req = mkreq(tmp_path, repo, sha, gitleaks_config=cfg, **kw)
+    out = publish_snapshot(req, store, scanner=run_gitleaks, scanner_version=lambda: "8", now=NOW)
+    return out, store, repo
+
+
+@pytest.mark.gitleaks
+@pytest.mark.skipif(shutil.which("gitleaks") is None, reason="gitleaks not installed")
+def test_project_gitleaksignore_suppresses_finding_in_archive_mode(tmp_path, make_repo):
+    out, store, _ = _real(tmp_path, make_repo, _aws_repo_files(True))
+    assert out is Outcome.PUBLISHED
+    assert json.loads(store.get(manifest_key("proj", D)))["scan_result"] == "clean"
+    with tarfile.open(fileobj=io.BytesIO(store.get(snapshot_key("proj", D))), mode="r:gz") as t:
+        names = t.getnames()
+    assert "cfg.py" in names and ".gitleaksignore" not in names
+
+
+@pytest.mark.gitleaks
+@pytest.mark.skipif(shutil.which("gitleaks") is None, reason="gitleaks not installed")
+def test_same_repo_without_ignore_file_has_secrets(tmp_path, make_repo):
+    out, store, _ = _real(tmp_path, make_repo, _aws_repo_files(False))
+    assert out is Outcome.SECRETS_FOUND and store.order == []
+
+
+@pytest.mark.gitleaks
+@pytest.mark.skipif(shutil.which("gitleaks") is None, reason="gitleaks not installed")
+def test_untracked_gitleaksignore_in_archive_mode_still_finds_secrets(tmp_path, make_repo):
+    repo, sha = make_repo(tmp_path, _aws_repo_files(False))
+    (repo / ".gitleaksignore").write_text("cfg.py:aws-access-token:1\n")
+    from snapshotkit.scan import run_gitleaks
+    cfg = Path(__file__).parent.parent / "config" / "gitleaks.toml"
+    out = publish_snapshot(mkreq(tmp_path, repo, sha, gitleaks_config=cfg), InMemoryStore(),
+                           scanner=run_gitleaks, scanner_version=lambda: "8", now=NOW)
+    assert out is Outcome.SECRETS_FOUND

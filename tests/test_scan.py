@@ -117,10 +117,10 @@ def test_argv(tmp_path, tree):
     cfg, rep = tmp_path / "c.toml", tmp_path / "r.json"
     run_gitleaks(tree, cfg, rep, gitleaks_bin=str(fake))
     argv = log.read_text().splitlines()
-    assert argv[:2] == ["dir", str(tree)]
-    assert argv[argv.index("--config") + 1] == str(cfg)
+    assert argv[:2] == ["dir", "."]
+    assert argv[argv.index("--config") + 1] == str(cfg.resolve())
     assert argv[argv.index("--report-format") + 1] == "json"
-    assert argv[argv.index("--report-path") + 1] == str(rep)
+    assert argv[argv.index("--report-path") + 1] == str(rep.resolve())
     assert argv[argv.index("--exit-code") + 1] == "1"
     assert "--redact" in argv and "--no-banner" in argv
     assert "--gitleaks-ignore-path" not in argv
@@ -129,7 +129,7 @@ def test_argv(tmp_path, tree):
     ign = tmp_path / ".gitleaksignore"
     run_gitleaks(tree, cfg, rep, ignore_file=ign, gitleaks_bin=str(fake))
     argv = log.read_text().splitlines()
-    assert argv[argv.index("--gitleaks-ignore-path") + 1] == str(ign)
+    assert argv[argv.index("--gitleaks-ignore-path") + 1] == str(ign.resolve())
 
 
 def test_version_strips_v(tmp_path):
@@ -166,3 +166,33 @@ def test_real_gitleaks_detects_aws_key(tmp_path):
     assert res.clean is False and res.findings >= 1
     assert secret not in (tmp_path / "r.json").read_text()  # --redact
     assert gitleaks_version()
+
+
+def test_runs_in_tree_dir_with_absolute_paths(tmp_path, tree, monkeypatch):
+    fake, log = make_fake(tmp_path, 0)
+    (tmp_path / "w").mkdir()
+    monkeypatch.chdir(tmp_path / "w")
+    run_gitleaks(tree, Path("c.toml"), Path("r.json"), ignore_file=Path("i"),
+                 gitleaks_bin=str(fake))
+    argv = log.read_text().splitlines()
+    w = (tmp_path / "w").resolve()
+    assert argv[argv.index("--config") + 1] == str(w / "c.toml")
+    assert argv[argv.index("--report-path") + 1] == str(w / "r.json")
+    assert argv[argv.index("--gitleaks-ignore-path") + 1] == str(w / "i")
+
+
+@pytest.mark.gitleaks
+@pytest.mark.skipif(shutil.which("gitleaks") is None, reason="gitleaks not installed")
+def test_real_gitleaks_fingerprint_is_relative_to_tree(tmp_path):
+    tree = tmp_path / "tree"
+    tree.mkdir()
+    key_id = "AKIA" + "QYLPMN5HFIQR7XYZ"
+    (tree / "cfg.py").write_text(f'aws_access_key_id = "{key_id}"\n')
+    cfg = Path(__file__).parent.parent / "config" / "gitleaks.toml"
+    res = run_gitleaks(tree, cfg, tmp_path / "r.json")
+    assert res.clean is False
+    fps = [f["Fingerprint"] for f in json.loads((tmp_path / "r.json").read_text())]
+    assert fps == ["cfg.py:aws-access-token:1"]
+    ign = tmp_path / "ign"
+    ign.write_text("cfg.py:aws-access-token:1\n")
+    assert run_gitleaks(tree, cfg, tmp_path / "r2.json", ignore_file=ign).clean is True

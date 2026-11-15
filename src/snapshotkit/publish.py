@@ -4,6 +4,7 @@ from __future__ import annotations
 import argparse
 import json
 import os
+import subprocess
 import sys
 import tempfile
 from collections.abc import Callable
@@ -59,6 +60,41 @@ def _log(msg: str) -> None:
     print(f"snapshot-publish: {msg}", file=sys.stderr)
 
 
+def _project_ignore(req: PublishRequest) -> bytes | None:
+    """The repo's root .gitleaksignore as committed in the exported commit, else None."""
+    repo = str(req.repo_dir)
+    if req.mode == "archive":
+        cmd = ["git", "-C", repo, "show", f"{req.commit}:.gitleaksignore"]
+    else:
+        tracked = subprocess.run(
+            ["git", "-C", repo, "ls-files", "--error-unmatch", ".gitleaksignore"],
+            capture_output=True, check=False,
+        )
+        if tracked.returncode != 0:
+            return None
+        try:
+            return (Path(repo) / ".gitleaksignore").read_bytes()
+        except OSError:
+            return None
+    proc = subprocess.run(cmd, capture_output=True, check=False)
+    return proc.stdout if proc.returncode == 0 else None
+
+
+def _ignore_file(req: PublishRequest, workdir: Path) -> Path | None:
+    project = _project_ignore(req)
+    admin = req.gitleaks_ignore
+    if project is None:
+        return admin
+    target = workdir / "project.gitleaksignore"
+    if admin is None:
+        target.write_bytes(project)
+        return target
+    sep = b"" if project.endswith(b"\n") or not project else b"\n"
+    target = workdir / "combined.gitleaksignore"
+    target.write_bytes(project + sep + Path(admin).read_bytes())
+    return target
+
+
 def publish_snapshot(
     req: PublishRequest,
     store: SnapshotStore,
@@ -93,7 +129,8 @@ def publish_snapshot(
 
     safe_extract(tar_path, tree)
     result = scanner(
-        tree, req.gitleaks_config, workdir / "gitleaks-report.json", req.gitleaks_ignore
+        tree, req.gitleaks_config, workdir / "gitleaks-report.json",
+        _ignore_file(req, workdir),
     )
     if not result.clean:
         _log(f"{result.findings} secret finding(s); nothing published")
