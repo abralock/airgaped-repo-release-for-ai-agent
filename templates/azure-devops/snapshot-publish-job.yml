@@ -38,6 +38,10 @@ jobs:
       - group: ${{ parameters.variableGroup }}
       - name: IMAGE_DIGEST
         value: ${{ parameters.imageDigest }}
+      # The variable group may omit SNAPSHOT_NOTIFY_WEBHOOK; an undefined $(macro) would be passed
+      # through literally, so resolve it to an empty string here.
+      - name: NOTIFY_WEBHOOK_RESOLVED
+        value: $[ coalesce(variables['SNAPSHOT_NOTIFY_WEBHOOK'], '') ]
     steps:
       - checkout: self
         fetchDepth: 1
@@ -52,6 +56,7 @@ jobs:
               crane auth login "$registry_host" -u "$REGISTRY_USER" -p "$REGISTRY_PASSWORD"
               crane manifest "${IMAGE_REPOSITORY}@${IMAGE_DIGEST}" > platform-manifest.json
             displayName: Fetch image index manifest
+            continueOnError: true
             env:
               IMAGE_REPOSITORY: ${{ parameters.imageRepository }}
               REGISTRY_USER: $(REGISTRY_USER)
@@ -82,9 +87,10 @@ jobs:
           esac
           exit "$rc"
         displayName: snapshot-publish
+        continueOnError: true
         env:
           SNAPSHOT_STORE_ENDPOINT: $(SNAPSHOT_STORE_ENDPOINT)
           SNAPSHOT_STORE_BUCKET: $(SNAPSHOT_STORE_BUCKET)
           SNAPSHOT_STORE_ACCESS_KEY: $(SNAPSHOT_STORE_ACCESS_KEY)
           SNAPSHOT_STORE_SECRET_KEY: $(SNAPSHOT_STORE_SECRET_KEY)
-          SNAPSHOT_NOTIFY_WEBHOOK: $(SNAPSHOT_NOTIFY_WEBHOOK)
+          SNAPSHOT_NOTIFY_WEBHOOK: $(NOTIFY_WEBHOOK_RESOLVED)

@@ -107,3 +107,16 @@ def test_examples():
     gl = _load(GL_EX)
     assert gl["include"][0]["project"]
     assert any(isinstance(v, dict) and v.get("extends") == ".snapshot-publish" for v in gl.values())
+
+
+def test_ado_step_continue_on_error_and_webhook():
+    job = _ado_job()
+    pub = next(s for s in job["steps"] if s.get("displayName") == "snapshot-publish")
+    assert pub["continueOnError"] is True
+    assert pub["env"]["SNAPSHOT_NOTIFY_WEBHOOK"] == "$(NOTIFY_WEBHOOK_RESOLVED)"
+    assert "$(SNAPSHOT_NOTIFY_WEBHOOK)" not in ADO.read_text()
+    assert any(isinstance(v, dict) and v.get("name") == "NOTIFY_WEBHOOK_RESOLVED"
+               and "coalesce(variables['SNAPSHOT_NOTIFY_WEBHOOK']" in v["value"] for v in job["variables"])
+    raw = ADO.read_text()
+    crane = raw.split("Fetch image index manifest")[1].split("- script:")[0]
+    assert "continueOnError: true" in crane
