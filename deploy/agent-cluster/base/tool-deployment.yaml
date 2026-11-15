@@ -1,0 +1,80 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: snapshot-mcp
+  namespace: code-snapshots
+  labels:
+    app.kubernetes.io/name: snapshot-mcp
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: snapshot-mcp
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: snapshot-mcp
+        app.kubernetes.io/part-of: snapshotkit
+    spec:
+      automountServiceAccountToken: false
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 10001
+        runAsGroup: 10001
+        seccompProfile:
+          type: RuntimeDefault
+      containers:
+        - name: snapshot-mcp
+          image: snapshotkit
+          ports:
+            - name: mcp
+              containerPort: 8080
+          env:
+            - name: SNAPSHOT_TOOL_CLUSTERS
+              value: /etc/snapshotkit/clusters/clusters.yaml
+            - name: SNAPSHOT_CACHE_DIR
+              value: /cache
+          envFrom:
+            - secretRef:
+                name: snapshot-store-reader
+          readinessProbe:
+            tcpSocket:
+              port: 8080
+            periodSeconds: 10
+          livenessProbe:
+            tcpSocket:
+              port: 8080
+            initialDelaySeconds: 10
+            periodSeconds: 20
+          resources:
+            requests:
+              cpu: 100m
+              memory: 256Mi
+            limits:
+              cpu: "1"
+              memory: 1Gi
+          securityContext:
+            readOnlyRootFilesystem: true
+            allowPrivilegeEscalation: false
+            capabilities:
+              drop: ["ALL"]
+          volumeMounts:
+            - name: clusters
+              mountPath: /etc/snapshotkit/clusters
+              readOnly: true
+            - name: cache
+              mountPath: /cache
+            - name: tmp
+              mountPath: /tmp
+      volumes:
+        - name: clusters
+          secret:
+            secretName: snapshot-clusters
+            items:
+              - key: clusters.yaml
+                path: clusters.yaml
+        - name: cache
+          emptyDir:
+            sizeLimit: 5Gi
+        - name: tmp
+          emptyDir: {}

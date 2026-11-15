@@ -1,0 +1,28 @@
+# One RoleBinding per production namespace (example names: shop, payments).
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: snapshot-reader
+  namespace: shop
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: snapshot-reader
+subjects:
+  - kind: ServiceAccount
+    name: snapshot-reader
+    namespace: snapshot-reader
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: snapshot-reader
+  namespace: payments
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: snapshot-reader
+subjects:
+  - kind: ServiceAccount
+    name: snapshot-reader
+    namespace: snapshot-reader

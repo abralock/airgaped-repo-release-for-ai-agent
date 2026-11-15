@@ -1,0 +1,51 @@
+# Covers every pod labelled part-of=snapshotkit: the tool and the retention job.
+# Placeholder addresses are RFC 5737 documentation ranges; overlays replace them.
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: snapshot-tool
+  namespace: code-snapshots
+spec:
+  podSelector:
+    matchLabels:
+      app.kubernetes.io/part-of: snapshotkit
+  policyTypes: [Ingress, Egress]
+  ingress:
+    - from:
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: ai-agent
+          podSelector:
+            matchLabels:
+              app.kubernetes.io/name: ai-agent
+      ports:
+        - protocol: TCP
+          port: 8080
+  egress:
+    # DNS
+    - to:
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: kube-system
+          podSelector:
+            matchLabels:
+              k8s-app: kube-dns
+      ports:
+        - protocol: UDP
+          port: 53
+        - protocol: TCP
+          port: 53
+    # Object store
+    - to:
+        - ipBlock:
+            cidr: 192.0.2.0/24
+      ports:
+        - protocol: TCP
+          port: 9000
+    # Production API servers
+    - to:
+        - ipBlock:
+            cidr: 198.51.100.10/32
+      ports:
+        - protocol: TCP
+          port: 6443

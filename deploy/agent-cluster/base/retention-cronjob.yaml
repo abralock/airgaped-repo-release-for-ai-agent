@@ -1,0 +1,64 @@
+apiVersion: batch/v1
+kind: CronJob
+metadata:
+  name: snapshot-retention
+  namespace: code-snapshots
+spec:
+  schedule: "0 3 * * *"
+  concurrencyPolicy: Forbid
+  successfulJobsHistoryLimit: 3
+  failedJobsHistoryLimit: 3
+  jobTemplate:
+    spec:
+      backoffLimit: 0
+      template:
+        metadata:
+          labels:
+            app.kubernetes.io/name: snapshot-retention
+            app.kubernetes.io/part-of: snapshotkit
+        spec:
+          restartPolicy: Never
+          automountServiceAccountToken: false
+          securityContext:
+            runAsNonRoot: true
+            runAsUser: 10001
+            runAsGroup: 10001
+            seccompProfile:
+              type: RuntimeDefault
+          containers:
+            - name: snapshot-retention
+              image: snapshotkit
+              command: ["snapshot-retention"]
+              env:
+                - name: SNAPSHOT_TOOL_CLUSTERS
+                  value: /etc/snapshotkit/clusters/clusters.yaml
+              envFrom:
+                - secretRef:
+                    name: snapshot-store-admin
+              resources:
+                requests:
+                  cpu: 100m
+                  memory: 128Mi
+                limits:
+                  cpu: 500m
+                  memory: 512Mi
+              securityContext:
+                readOnlyRootFilesystem: true
+                allowPrivilegeEscalation: false
+                capabilities:
+                  drop: ["ALL"]
+              volumeMounts:
+                - name: clusters
+                  mountPath: /etc/snapshotkit/clusters
+                  readOnly: true
+                - name: tmp
+                  mountPath: /tmp
+          volumes:
+            - name: clusters
+              secret:
+                secretName: snapshot-clusters
+                items:
+                  - key: clusters.yaml
+                    path: clusters.yaml
+            - name: tmp
+              emptyDir: {}
