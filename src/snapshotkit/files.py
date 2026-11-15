@@ -4,22 +4,34 @@ from __future__ import annotations
 
 import fnmatch
 import os
-import re
+import time
 from pathlib import Path
+
+import regex
 
 BINARY_SNIFF_BYTES = 8192
 MAX_LINE_CHARS = 500
+MATCH_LINE_CAP = 10_000
+MAX_SEARCH_FILE_BYTES = 5 * 1024 * 1024
+SEARCH_TIME_BUDGET = 2.0
 
 
 class PathOutsideSnapshot(Exception):
     """Raised when a path resolves outside the snapshot root."""
 
 
+class NotAFileInSnapshot(Exception):
+    """Raised when a requested path is missing or not a regular file."""
+
+
 def resolve_inside(root: Path, rel: str) -> Path:
     if "\x00" in rel or rel.startswith("/") or Path(rel).is_absolute():
         raise PathOutsideSnapshot(f"path outside snapshot: {rel!r}")
     base = root.resolve()
-    target = (base / rel).resolve()
+    try:
+        target = (base / rel).resolve()
+    except (RuntimeError, OSError):
+        raise PathOutsideSnapshot(f"path outside snapshot: {rel!r}") from None
     if not target.is_relative_to(base):
         raise PathOutsideSnapshot(f"path outside snapshot: {rel!r}")
     return target
@@ -47,8 +59,13 @@ def list_files(root: Path, subdir: str = "", limit: int = 2000) -> dict:
 
 def read_file(root: Path, rel_path: str, max_bytes: int = 200_000) -> dict:
     path = resolve_inside(root, rel_path)
-    with open(path, "rb") as f:
-        data = f.read(max_bytes + 1)
+    if not path.is_file():
+        raise NotAFileInSnapshot(f"not a file in this snapshot: {rel_path}")
+    try:
+        with open(path, "rb") as f:
+            data = f.read(max_bytes + 1)
+    except OSError:
+        raise NotAFileInSnapshot(f"not a file in this snapshot: {rel_path}") from None
     if _is_binary(data):
         return {"content": "", "truncated": False, "binary": True}
     truncated = len(data) > max_bytes
@@ -63,11 +80,19 @@ def search_code(
     root: Path, pattern: str, glob: str | None = None, max_matches: int = 200
 ) -> dict:
     try:
-        regex = re.compile(pattern)
-    except re.error as exc:
+        rx = regex.compile(pattern)
+    except regex.error as exc:
         raise ValueError(f"invalid pattern: {exc}") from exc
     base = root.resolve()
+    deadline = time.monotonic() + SEARCH_TIME_BUDGET
     matches: list[dict] = []
+
+    def result(truncated: bool, timed_out: bool = False) -> dict:
+        out = {"matches": matches, "truncated": truncated}
+        if timed_out:
+            out["timed_out"] = True
+        return out
+
     for rel in list_files(root, limit=10**9)["files"]:
         if glob and not (
             fnmatch.fnmatch(rel, glob) or fnmatch.fnmatch(rel.rsplit("/", 1)[-1], glob)
@@ -75,20 +100,27 @@ def search_code(
             continue
         try:
             path = resolve_inside(base, rel)
-        except PathOutsideSnapshot:
-            continue
-        if not path.is_file():
-            continue
-        with open(path, "rb") as f:
-            if _is_binary(f.read(BINARY_SNIFF_BYTES)):
+            if not path.is_file() or path.stat().st_size > MAX_SEARCH_FILE_BYTES:
                 continue
-            f.seek(0)
-            for lineno, raw in enumerate(f, start=1):
-                text = raw.decode("utf-8", errors="replace").rstrip("\r\n")
-                if regex.search(text):
-                    if len(matches) >= max_matches:
-                        return {"matches": matches, "truncated": True}
-                    matches.append(
-                        {"path": rel, "line": lineno, "text": text[:MAX_LINE_CHARS]}
-                    )
-    return {"matches": matches, "truncated": False}
+            with open(path, "rb") as f:
+                if _is_binary(f.read(BINARY_SNIFF_BYTES)):
+                    continue
+                f.seek(0)
+                for lineno, raw in enumerate(f, start=1):
+                    text = raw.decode("utf-8", errors="replace").rstrip("\r\n")
+                    remaining = deadline - time.monotonic()
+                    if remaining <= 0:
+                        return result(True, True)
+                    try:
+                        hit = rx.search(text[:MATCH_LINE_CAP], timeout=remaining)
+                    except TimeoutError:
+                        return result(True, True)
+                    if hit:
+                        if len(matches) >= max_matches:
+                            return result(True)
+                        matches.append(
+                            {"path": rel, "line": lineno, "text": text[:MAX_LINE_CHARS]}
+                        )
+        except (PathOutsideSnapshot, OSError):
+            continue
+    return result(False)

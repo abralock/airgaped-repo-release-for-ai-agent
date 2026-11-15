@@ -7,7 +7,7 @@ name = "snapshotkit"
 version = "0.1.0"
 description = "History-free, secret-scanned source snapshots for air-gapped AI agents"
 requires-python = ">=3.12"
-dependencies = ["boto3", "kubernetes", "mcp>=1.9", "PyYAML"]
+dependencies = ["boto3", "kubernetes", "mcp>=1.9", "PyYAML", "regex"]
 
 [project.optional-dependencies]
 dev = ["pytest", "yamllint"]
