@@ -154,6 +154,13 @@ code; that is not this runbook. If it is a false positive:
    used. The file itself is not part of the snapshot. The manifest records
    `scan_result: clean`. The commit that adds the ignore entry must be the one built, so
    this helps future builds, not the already-failed one.
+
+   **Security note:** a fingerprint is `file:rule:line` and contains no hash of the secret,
+   so an entry silences that rule on that line permanently. A different secret later placed
+   on the same line is suppressed too. Remove the entry when the line changes, and have
+   reviewers treat every `.gitleaksignore` change as security-relevant. Only a regular
+   file committed at the repo root is honoured (never a symlink or directory, and never
+   the working-tree copy).
 3. **A store admin republishes the already-deployed digest** from that reviewed list. Write
    the approved fingerprints, one per line, to `reviewed.gitleaksignore` and run the backfill
    command with the ignore file mounted and `--gitleaks-ignore` (fingerprints are the same

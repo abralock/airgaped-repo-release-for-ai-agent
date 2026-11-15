@@ -283,18 +283,60 @@ def test_untracked_gitleaksignore_not_used_in_archive_mode(tmp_path, make_repo):
     assert seen["ignore"] is None
 
 
-def test_checkout_mode_uses_only_tracked_gitleaksignore(tmp_path, make_repo):
+def test_checkout_mode_uses_only_committed_gitleaksignore(tmp_path, make_repo):
     repo, sha = make_repo(tmp_path, {"a.txt": "x"})
     (repo / ".gitleaksignore").write_text("proj:rule:1\n")  # untracked
     seen = {}
     publish_snapshot(mkreq(tmp_path, repo, sha, mode="checkout"), InMemoryStore(),
                      scanner=_recording_scanner(seen), scanner_version=lambda: "8", now=NOW)
     assert seen["ignore"] is None
-    git(repo, "add", ".gitleaksignore")
+    git(repo, "add", ".gitleaksignore")  # staged but not committed
     publish_snapshot(mkreq(tmp_path, repo, sha, mode="checkout", workdir=tmp_path / "w2"),
                      InMemoryStore(), scanner=_recording_scanner(seen),
                      scanner_version=lambda: "8", now=NOW)
-    assert seen["ignore"] == "proj:rule:1\n"
+    assert seen["ignore"] is None
+
+
+def test_checkout_mode_uses_committed_content_not_modified_worktree(tmp_path, make_repo):
+    repo, sha = make_repo(tmp_path, {"a.txt": "x", ".gitleaksignore": "committed:rule:1\n"})
+    (repo / ".gitleaksignore").write_text("tampered:rule:9\n")
+    seen = {}
+    publish_snapshot(mkreq(tmp_path, repo, sha, mode="checkout"), InMemoryStore(),
+                     scanner=_recording_scanner(seen), scanner_version=lambda: "8", now=NOW)
+    assert seen["ignore"] == "committed:rule:1\n"
+
+
+@pytest.mark.parametrize("mode", ["archive", "checkout"])
+def test_symlink_gitleaksignore_is_not_followed(tmp_path, make_repo, mode):
+    outside = tmp_path / "outside.txt"
+    outside.write_text("outside:rule:1\n")
+    repo, sha = make_repo(tmp_path, {"a.txt": "x"}, commit=False)
+    (repo / ".gitleaksignore").symlink_to(outside)
+    git(repo, "add", "-A")
+    git(repo, "commit", "-q", "-m", "m")
+    sha = git(repo, "rev-parse", "HEAD")
+    seen = {}
+    publish_snapshot(mkreq(tmp_path, repo, sha, mode=mode), InMemoryStore(),
+                     scanner=_recording_scanner(seen), scanner_version=lambda: "8", now=NOW)
+    assert seen["ignore"] is None
+
+
+@pytest.mark.parametrize("mode", ["archive", "checkout"])
+def test_directory_gitleaksignore_is_not_used(tmp_path, make_repo, mode):
+    repo, sha = make_repo(tmp_path, {"a.txt": "x", ".gitleaksignore/entry": "y"})
+    seen = {}
+    publish_snapshot(mkreq(tmp_path, repo, sha, mode=mode), InMemoryStore(),
+                     scanner=_recording_scanner(seen), scanner_version=lambda: "8", now=NOW)
+    assert seen["ignore"] is None
+
+
+@pytest.mark.parametrize("mode", ["archive", "checkout"])
+def test_committed_gitleaksignore_used_in_both_modes(tmp_path, make_repo, mode):
+    repo, sha = make_repo(tmp_path, {"a.txt": "x", ".gitleaksignore": "p:r:1\n"})
+    seen = {}
+    publish_snapshot(mkreq(tmp_path, repo, sha, mode=mode), InMemoryStore(),
+                     scanner=_recording_scanner(seen), scanner_version=lambda: "8", now=NOW)
+    assert seen["ignore"] == "p:r:1\n"
 
 
 def _aws_repo_files(ignore: bool):

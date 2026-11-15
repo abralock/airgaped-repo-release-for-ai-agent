@@ -61,23 +61,28 @@ def _log(msg: str) -> None:
 
 
 def _project_ignore(req: PublishRequest) -> bytes | None:
-    """The repo's root .gitleaksignore as committed in the exported commit, else None."""
+    """The root .gitleaksignore blob committed at the exported commit, else None.
+
+    Reads the git object, never the working tree, and only a regular-file blob
+    (not a symlink, directory or submodule).
+    """
     repo = str(req.repo_dir)
-    if req.mode == "archive":
-        cmd = ["git", "-C", repo, "show", f"{req.commit}:.gitleaksignore"]
-    else:
-        tracked = subprocess.run(
-            ["git", "-C", repo, "ls-files", "--error-unmatch", ".gitleaksignore"],
-            capture_output=True, check=False,
-        )
-        if tracked.returncode != 0:
-            return None
-        try:
-            return (Path(repo) / ".gitleaksignore").read_bytes()
-        except OSError:
-            return None
-    proc = subprocess.run(cmd, capture_output=True, check=False)
-    return proc.stdout if proc.returncode == 0 else None
+    ref = req.commit if req.mode == "archive" else "HEAD"
+    ls = subprocess.run(
+        ["git", "-C", repo, "ls-tree", ref, "--", ".gitleaksignore"],
+        capture_output=True, check=False,
+    )
+    if ls.returncode != 0 or not ls.stdout.strip():
+        return None
+    mode = ls.stdout.split()[0]
+    if mode not in (b"100644", b"100755"):
+        _log(f"warning: .gitleaksignore is not a regular file (mode {mode.decode()}); ignored")
+        return None
+    blob = subprocess.run(
+        ["git", "-C", repo, "cat-file", "blob", f"{ref}:.gitleaksignore"],
+        capture_output=True, check=False,
+    )
+    return blob.stdout if blob.returncode == 0 else None
 
 
 def _ignore_file(req: PublishRequest, workdir: Path) -> Path | None:
