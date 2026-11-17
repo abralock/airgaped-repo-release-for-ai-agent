@@ -10,7 +10,7 @@
       "url": "https://github.com/abralock/airgaped-repo-release-for-ai-agent.git",
       "provider": "github",
       "link_mode": "web",
-      "revision": "e100ccc661eb5598cf838adf04382e4b43ff0c08"
+      "revision": "ae28fdd2ca13d6a8192415c8ac9d1dd835c72a4c"
     }
   },
   "components": [
@@ -31,14 +31,14 @@
       "sources": [
         {
           "path": "templates/examples/gitlab-ci.example.yml",
-          "line": 11,
-          "end_line": 17,
+          "line": 16,
+          "end_line": 41,
           "label": "GitLab build job (IMAGE_DIGEST)"
         },
         {
           "path": "templates/examples/azure-pipelines.example.yml",
-          "line": 15,
-          "end_line": 25,
+          "line": 26,
+          "end_line": 52,
           "label": "ADO build job (imageDigest)"
         }
       ]
