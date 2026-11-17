@@ -10,115 +10,477 @@
       "url": "https://github.com/abralock/airgaped-repo-release-for-ai-agent.git",
       "provider": "github",
       "link_mode": "web",
-      "revision": "bb012e9eae98842c6974ba194d8e87bc1614fb3f"
+      "revision": "e100ccc661eb5598cf838adf04382e4b43ff0c08"
     }
   },
   "components": [
     {
-      "id": "registry", "type": "external", "label": "Image registry", "sublabel": "platform manifest",
-      "pos": [270, 40], "size": [150, 62],
-      "sources": [{ "path": "templates/gitlab/snapshot-publish.gitlab-ci.yml", "line": 25, "end_line": 31, "label": "crane manifest (multi-arch)" }]
-    },
-    {
-      "id": "repo", "type": "external", "label": "Source repos", "sublabel": "Azure DevOps · GitLab",
-      "pos": [40, 180], "size": [130, 62],
+      "id": "build",
+      "type": "backend",
+      "label": "Build & push image",
+      "sublabel": "your CI step \u00b7 emits digest",
+      "tag": "existing job",
+      "pos": [
+        270,
+        40
+      ],
+      "size": [
+        150,
+        62
+      ],
       "sources": [
-        { "path": "templates/gitlab/snapshot-publish.gitlab-ci.yml", "line": 13, "end_line": 24, "label": "GitLab hidden job" },
-        { "path": "templates/azure-devops/snapshot-publish-job.yml", "line": 65, "end_line": 80, "label": "ADO job step" }
+        {
+          "path": "templates/examples/gitlab-ci.example.yml",
+          "line": 11,
+          "end_line": 17,
+          "label": "GitLab build job (IMAGE_DIGEST)"
+        },
+        {
+          "path": "templates/examples/azure-pipelines.example.yml",
+          "line": 15,
+          "end_line": 25,
+          "label": "ADO build job (imageDigest)"
+        }
       ]
     },
     {
-      "id": "publish", "type": "backend", "label": "snapshot-publish", "sublabel": "export + denylist", "tag": "publisher image",
-      "pos": [270, 180], "size": [150, 62],
+      "id": "registry",
+      "type": "external",
+      "label": "Image registry",
+      "sublabel": "computes the digest",
+      "pos": [
+        540,
+        40
+      ],
+      "size": [
+        150,
+        62
+      ],
       "sources": [
-        { "path": "src/snapshotkit/publish.py", "line": 118, "end_line": 184, "label": "publish_snapshot" },
-        { "path": "src/snapshotkit/export.py", "line": 67, "end_line": 119, "label": "git archive tree export" },
-        { "path": "src/snapshotkit/denylist.py", "line": 8, "end_line": 15, "label": "denylist" }
+        {
+          "path": "templates/gitlab/snapshot-publish.gitlab-ci.yml",
+          "line": 25,
+          "end_line": 31,
+          "label": "crane manifest (multi-arch)"
+        },
+        {
+          "path": "src/snapshotkit/digests.py",
+          "line": 24,
+          "end_line": 31,
+          "label": "per-platform digests"
+        }
       ]
     },
     {
-      "id": "gitleaks", "type": "security", "label": "gitleaks scan", "sublabel": "fail-closed",
-      "pos": [270, 320], "size": [150, 62],
+      "id": "repo",
+      "type": "external",
+      "label": "Source repos",
+      "sublabel": "Azure DevOps \u00b7 GitLab",
+      "pos": [
+        40,
+        180
+      ],
+      "size": [
+        130,
+        62
+      ],
       "sources": [
-        { "path": "src/snapshotkit/scan.py", "line": 47, "end_line": 96, "label": "run_gitleaks" },
-        { "path": "src/snapshotkit/publish.py", "line": 151, "end_line": 158, "label": "scan before upload" }
+        {
+          "path": "templates/gitlab/snapshot-publish.gitlab-ci.yml",
+          "line": 13,
+          "end_line": 24,
+          "label": "GitLab hidden job"
+        },
+        {
+          "path": "templates/azure-devops/snapshot-publish-job.yml",
+          "line": 65,
+          "end_line": 80,
+          "label": "ADO job step"
+        }
       ]
     },
     {
-      "id": "store", "type": "database", "label": "Snapshot store", "sublabel": "S3-compatible, write-once",
-      "pos": [540, 180], "size": [150, 62],
+      "id": "publish",
+      "type": "backend",
+      "label": "snapshot-publish",
+      "sublabel": "export + denylist",
+      "tag": "publisher image",
+      "pos": [
+        270,
+        180
+      ],
+      "size": [
+        150,
+        62
+      ],
       "sources": [
-        { "path": "src/snapshotkit/store.py", "line": 87, "end_line": 140, "label": "S3Store put_new If-None-Match" },
-        { "path": "deploy/store/policies/pipeline-writer.template.json", "line": 1, "end_line": 13, "label": "pipeline writer policy" },
-        { "path": "deploy/store/policies/tool-reader.json", "line": 1, "end_line": 15, "label": "tool reader policy" }
+        {
+          "path": "src/snapshotkit/publish.py",
+          "line": 118,
+          "end_line": 184,
+          "label": "publish_snapshot"
+        },
+        {
+          "path": "src/snapshotkit/export.py",
+          "line": 67,
+          "end_line": 119,
+          "label": "git archive tree export"
+        },
+        {
+          "path": "src/snapshotkit/denylist.py",
+          "line": 8,
+          "end_line": 15,
+          "label": "denylist"
+        }
       ]
     },
     {
-      "id": "cache", "type": "database", "label": "Snapshot cache", "sublabel": "emptyDir · LRU 4 GiB",
-      "pos": [760, 40], "size": [150, 62],
+      "id": "gitleaks",
+      "type": "security",
+      "label": "gitleaks scan",
+      "sublabel": "fail-closed",
+      "pos": [
+        270,
+        320
+      ],
+      "size": [
+        150,
+        62
+      ],
       "sources": [
-        { "path": "src/snapshotkit/snapshots.py", "line": 55, "end_line": 120, "label": "SnapshotCache" },
-        { "path": "deploy/agent-cluster/base/tool-deployment.yaml", "line": 82, "end_line": 83, "label": "5Gi emptyDir" }
+        {
+          "path": "src/snapshotkit/scan.py",
+          "line": 47,
+          "end_line": 96,
+          "label": "run_gitleaks"
+        },
+        {
+          "path": "src/snapshotkit/publish.py",
+          "line": 151,
+          "end_line": 158,
+          "label": "scan before upload"
+        }
       ]
     },
     {
-      "id": "tool", "type": "backend", "label": "snapshot-mcp", "sublabel": "MCP tools · no git", "tag": "tool image",
-      "pos": [760, 180], "size": [150, 62],
+      "id": "store",
+      "type": "database",
+      "label": "Snapshot store",
+      "sublabel": "S3-compatible, write-once",
+      "pos": [
+        540,
+        180
+      ],
+      "size": [
+        150,
+        62
+      ],
       "sources": [
-        { "path": "src/snapshotkit/mcp_server.py", "line": 62, "end_line": 141, "label": "5 MCP tools" },
-        { "path": "src/snapshotkit/files.py", "line": 27, "end_line": 37, "label": "paths confined to snapshot" },
-        { "path": "deploy/agent-cluster/base/tool-deployment.yaml", "line": 1, "end_line": 41, "label": "Deployment" }
+        {
+          "path": "src/snapshotkit/store.py",
+          "line": 87,
+          "end_line": 140,
+          "label": "S3Store put_new If-None-Match"
+        },
+        {
+          "path": "deploy/store/policies/pipeline-writer.template.json",
+          "line": 1,
+          "end_line": 13,
+          "label": "pipeline writer policy"
+        },
+        {
+          "path": "deploy/store/policies/tool-reader.json",
+          "line": 1,
+          "end_line": 15,
+          "label": "tool reader policy"
+        }
       ]
     },
     {
-      "id": "retention", "type": "backend", "label": "snapshot-retention", "sublabel": "daily CronJob", "tag": "tool image",
-      "pos": [760, 320], "size": [150, 62],
+      "id": "cache",
+      "type": "database",
+      "label": "Snapshot cache",
+      "sublabel": "emptyDir \u00b7 LRU 4 GiB",
+      "pos": [
+        760,
+        40
+      ],
+      "size": [
+        150,
+        62
+      ],
       "sources": [
-        { "path": "src/snapshotkit/retention.py", "line": 60, "end_line": 89, "label": "keep deployed / 20 newest / 90d" },
-        { "path": "src/snapshotkit/retention.py", "line": 107, "end_line": 165, "label": "abort on failed cluster" },
-        { "path": "deploy/agent-cluster/base/retention-cronjob.yaml", "line": 1, "end_line": 31, "label": "CronJob" }
+        {
+          "path": "src/snapshotkit/snapshots.py",
+          "line": 55,
+          "end_line": 120,
+          "label": "SnapshotCache"
+        },
+        {
+          "path": "deploy/agent-cluster/base/tool-deployment.yaml",
+          "line": 82,
+          "end_line": 83,
+          "label": "5Gi emptyDir"
+        }
       ]
     },
     {
-      "id": "clusters", "type": "cloud", "label": "Production clusters", "sublabel": "pods · read-only RBAC",
-      "pos": [760, 470], "size": [150, 62],
+      "id": "tool",
+      "type": "backend",
+      "label": "snapshot-mcp",
+      "sublabel": "MCP tools \u00b7 no git",
+      "tag": "tool image",
+      "pos": [
+        760,
+        180
+      ],
+      "size": [
+        150,
+        62
+      ],
       "sources": [
-        { "path": "src/snapshotkit/clusters.py", "line": 92, "end_line": 146, "label": "KubeClusterReader" },
-        { "path": "src/snapshotkit/lookup.py", "line": 42, "end_line": 84, "label": "concurrent lookup, 15s" },
-        { "path": "deploy/prod-cluster-rbac/base/clusterrole.yaml", "line": 1, "end_line": 12, "label": "get/list only" }
+        {
+          "path": "src/snapshotkit/mcp_server.py",
+          "line": 62,
+          "end_line": 141,
+          "label": "5 MCP tools"
+        },
+        {
+          "path": "src/snapshotkit/files.py",
+          "line": 27,
+          "end_line": 37,
+          "label": "paths confined to snapshot"
+        },
+        {
+          "path": "deploy/agent-cluster/base/tool-deployment.yaml",
+          "line": 1,
+          "end_line": 41,
+          "label": "Deployment"
+        }
       ]
     },
     {
-      "id": "operator", "type": "external", "label": "L1 operator", "sublabel": "asks about prod issue",
-      "pos": [1010, 40], "size": [140, 62],
-      "sources": [{ "path": "README.md", "line": 3, "end_line": 9, "label": "purpose" }]
+      "id": "retention",
+      "type": "backend",
+      "label": "snapshot-retention",
+      "sublabel": "daily CronJob",
+      "tag": "tool image",
+      "pos": [
+        760,
+        320
+      ],
+      "size": [
+        150,
+        62
+      ],
+      "sources": [
+        {
+          "path": "src/snapshotkit/retention.py",
+          "line": 60,
+          "end_line": 89,
+          "label": "keep deployed / 20 newest / 90d"
+        },
+        {
+          "path": "src/snapshotkit/retention.py",
+          "line": 107,
+          "end_line": 165,
+          "label": "abort on failed cluster"
+        },
+        {
+          "path": "deploy/agent-cluster/base/retention-cronjob.yaml",
+          "line": 1,
+          "end_line": 31,
+          "label": "CronJob"
+        }
+      ]
     },
     {
-      "id": "agent", "type": "frontend", "label": "AI agent", "sublabel": "existing · egress-limited", "tag": "ai-agent ns",
-      "pos": [1010, 180], "size": [140, 62],
-      "sources": [{ "path": "deploy/agent-cluster/base/networkpolicy-agent.yaml", "line": 13, "end_line": 54, "label": "agent egress policy" }]
+      "id": "clusters",
+      "type": "cloud",
+      "label": "Production clusters",
+      "sublabel": "pods \u00b7 read-only RBAC",
+      "pos": [
+        760,
+        470
+      ],
+      "size": [
+        150,
+        62
+      ],
+      "sources": [
+        {
+          "path": "src/snapshotkit/digests.py",
+          "line": 8,
+          "end_line": 14,
+          "label": "imageID to digest"
+        },
+        {
+          "path": "src/snapshotkit/clusters.py",
+          "line": 92,
+          "end_line": 146,
+          "label": "KubeClusterReader"
+        },
+        {
+          "path": "deploy/prod-cluster-rbac/base/clusterrole.yaml",
+          "line": 1,
+          "end_line": 12,
+          "label": "get/list only"
+        }
+      ]
+    },
+    {
+      "id": "operator",
+      "type": "external",
+      "label": "L1 operator",
+      "sublabel": "asks about prod issue",
+      "pos": [
+        1010,
+        40
+      ],
+      "size": [
+        140,
+        62
+      ],
+      "sources": [
+        {
+          "path": "README.md",
+          "line": 3,
+          "end_line": 9,
+          "label": "purpose"
+        }
+      ]
+    },
+    {
+      "id": "agent",
+      "type": "frontend",
+      "label": "AI agent",
+      "sublabel": "existing \u00b7 egress-limited",
+      "tag": "ai-agent ns",
+      "pos": [
+        1010,
+        180
+      ],
+      "size": [
+        140,
+        62
+      ],
+      "sources": [
+        {
+          "path": "deploy/agent-cluster/base/networkpolicy-agent.yaml",
+          "line": 13,
+          "end_line": 54,
+          "label": "agent egress policy"
+        }
+      ]
     }
   ],
   "boundaries": [
-    { "kind": "region", "label": "CI pipeline", "wraps": ["repo", "publish", "gitleaks"], "pad": 18 },
-    { "kind": "security-group", "label": "code-snapshots ns · default-deny", "wraps": ["cache", "tool", "retention"], "pad": 14 }
+    {
+      "kind": "region",
+      "label": "CI pipeline",
+      "wraps": [
+        "build",
+        "repo",
+        "publish",
+        "gitleaks"
+      ],
+      "pad": 18
+    },
+    {
+      "kind": "security-group",
+      "label": "code-snapshots ns \u00b7 default-deny",
+      "wraps": [
+        "cache",
+        "tool",
+        "retention"
+      ],
+      "pad": 14
+    }
   ],
   "connections": [
-    { "from": "repo", "to": "publish", "label": "git archive", "variant": "emphasis" },
-    { "from": "publish", "to": "registry", "label": "crane manifest", "variant": "dashed" },
-    { "from": "publish", "to": "gitleaks", "label": "scan tree", "variant": "security" },
-    { "from": "publish", "to": "store", "label": "PUT if clean", "variant": "emphasis" },
-    { "from": "operator", "to": "agent", "label": "asks" },
-    { "from": "agent", "to": "tool", "label": "MCP :8080", "variant": "emphasis" },
-    { "from": "tool", "to": "store", "label": "GET" },
-    { "from": "tool", "to": "cache", "label": "extract" },
-    { "from": "tool", "to": "clusters", "label": "pod digests", "variant": "security", "fromSide": "right", "toSide": "right" },
-    { "from": "retention", "to": "store", "label": "delete old", "variant": "dashed", "fromSide": "left", "toSide": "bottom" },
-    { "from": "retention", "to": "clusters", "label": "running digests" }
+    {
+      "from": "build",
+      "to": "registry",
+      "label": "push :tag",
+      "variant": "emphasis"
+    },
+    {
+      "from": "build",
+      "to": "publish",
+      "label": "tag + digest",
+      "variant": "emphasis"
+    },
+    {
+      "from": "repo",
+      "to": "publish",
+      "label": "git archive",
+      "variant": "emphasis"
+    },
+    {
+      "from": "publish",
+      "to": "registry",
+      "label": "platform digests",
+      "variant": "dashed"
+    },
+    {
+      "from": "publish",
+      "to": "gitleaks",
+      "label": "scan tree",
+      "variant": "security"
+    },
+    {
+      "from": "publish",
+      "to": "store",
+      "label": "PUT under digest",
+      "variant": "emphasis"
+    },
+    {
+      "from": "operator",
+      "to": "agent",
+      "label": "asks"
+    },
+    {
+      "from": "agent",
+      "to": "tool",
+      "label": "MCP :8080",
+      "variant": "emphasis"
+    },
+    {
+      "from": "tool",
+      "to": "store",
+      "label": "GET by digest"
+    },
+    {
+      "from": "tool",
+      "to": "cache",
+      "label": "extract"
+    },
+    {
+      "from": "tool",
+      "to": "clusters",
+      "label": "imageID digests",
+      "variant": "security",
+      "fromSide": "right",
+      "toSide": "right"
+    },
+    {
+      "from": "retention",
+      "to": "store",
+      "label": "delete old",
+      "variant": "dashed",
+      "fromSide": "left",
+      "toSide": "bottom"
+    },
+    {
+      "from": "retention",
+      "to": "clusters",
+      "label": "running digests"
+    }
   ],
   "cards": [
     {
-      "dot": "rose", "title": "What the agent never sees",
+      "dot": "rose",
+      "title": "What the agent never sees",
       "items": [
         "No .git, history, authors or commit SHA: only the tree of one commit",
         "Denylisted files (.env, keys, PDFs, archives) are dropped before the scan",
@@ -126,7 +488,8 @@
       ]
     },
     {
-      "dot": "amber", "title": "Fail-closed publishing",
+      "dot": "amber",
+      "title": "Fail-closed publishing",
       "items": [
         "Secrets found: exit 10, nothing uploaded",
         "Submodules or LFS in archive mode: exit 11, use checkout mode",
@@ -134,9 +497,19 @@
       ]
     },
     {
-      "dot": "cyan", "title": "Lookup and lifecycle",
+      "dot": "violet",
+      "title": "Tag and digest",
       "items": [
-        "Snapshots are keyed by image digest, so the agent reads the code that is running",
+        "Build pushes image:tag; the registry computes its sha256 digest",
+        "CI hands tag and digest to snapshot-publish; multi-arch adds per-platform digests as aliases",
+        "The snapshot is filed under the digest; the tag index allows lookup by version",
+        "Pods report the digest in imageID, so the agent reads the code that is actually running"
+      ]
+    },
+    {
+      "dot": "cyan",
+      "title": "Lookup and lifecycle",
+      "items": [
         "Retention aborts if any cluster is unreachable or reports zero digests",
         "Separate CI and prod networks: snapshot-transfer carries a one-way, sha256-checked bundle"
       ]
