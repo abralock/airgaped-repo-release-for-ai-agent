@@ -119,6 +119,42 @@ For a multi-arch build (`--platform linux/amd64,linux/arm64`), also set
 per-platform digests are recorded as aliases. Both examples use Docker-in-Docker style
 `buildx`; kaniko and buildah can also write the pushed digest to a file.
 
+## Snapshot store layout
+
+The store (MinIO or another S3-compatible bucket, `code-snapshots` by default) holds one
+folder per project. Each published image adds a source archive named after its digest, plus
+a small details file that records the version (tag). For one release of `my-service` tagged
+`1.4.2`:
+
+```
+snapshots/
+  my-service/                          ← folder = project
+    sha256-ab12….tar.gz                ← the source code (file name = digest)
+    sha256-ab12….json                  ← details: tag 1.4.2, digest, pipeline link, scan result
+index/
+  digest/sha256-ab12….json             ← "this digest → my-service snapshot"
+  tag/registry.internal/my-service/
+    1.4.2.json                         ← "version 1.4.2 → digest sha256-ab12…"
+```
+
+- **Folder = project; file name = digest.** The `:` in the digest becomes `-`, because `:`
+  is not safe in object names (`sha256:ab12…` → `sha256-ab12…`).
+- **The archive is a `.tar.gz`** of the files of one commit: no `.git`, history, authors,
+  commit SHA or timestamps.
+- **The version is not in the file name.** The tag is recorded in the `.json` details file
+  and in `index/tag/…`, so you can look a snapshot up by version as well as by digest.
+- **Two ways in.** By what is running: pod digest → `index/digest/…` → snapshot. By version:
+  `index/tag/…` → digest → snapshot. A multi-arch image gets one `index/digest/…` entry per
+  platform digest, all pointing to the same snapshot.
+- **Write-once.** The archive, details file and digest index entries are never overwritten.
+  Only a tag index entry can be replaced, when a tag is re-pushed to a new image.
+- **Access.** Each pipeline's writer policy may only add objects under its own
+  `snapshots/<project>/` folder and `index/`; `snapshot-mcp` can only read; only the
+  retention job deletes.
+
+The keys are defined in `src/snapshotkit/store.py`; the policies are in
+`deploy/store/policies/`.
+
 ## Development quickstart
 
 ```sh
