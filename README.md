@@ -25,6 +25,53 @@ Its source is `docs/architecture/snapshotkit.architecture.json`; see `CLAUDE.md`
 | Retention | `src/snapshotkit/retention.py` | Daily job: keep if deployed, among the 20 newest, or under 90 days old |
 | Manifests | `deploy/agent-cluster/`, `deploy/prod-cluster-rbac/` | Kustomize for the agent cluster (tool, retention, NetworkPolicies) and read-only RBAC on production clusters |
 
+## Image tags and digests
+
+Every pushed image has both a tag and a digest:
+
+```
+registry.internal/payment-api:1.4.2@sha256:ab12…
+                              └─tag─┘ └─digest──┘
+```
+
+| | Tag (`1.4.2`) | Digest (`sha256:ab12…`) |
+|---|---|---|
+| What it is | A version label | A fingerprint of the exact image contents |
+| Who chooses it | Your pipeline or team | Computed by the registry on push |
+| Can it change? | Yes, it can be moved to another image | Never: always this exact image |
+| Reported by Kubernetes | Whatever the deployment asked for | The exact image running in each pod (`imageID`) |
+
+On push the registry stores the image under its digest, and the tag is a name pointing
+at that digest (`1.4.2 → sha256:ab12… → image`). If someone re-pushes `1.4.2` with
+different code, the tag moves but the old digest still means the old image.
+
+snapshotkit uses both:
+
+- **CI:** after the image push, the pipeline passes the digest (`--image-digest`) and the
+  tag (`--image-tag`) to `snapshot-publish`. The snapshot is filed under the digest; the
+  tag goes into an index and the snapshot manifest, so you can still find it by version.
+- **Cluster:** `find_deployed_version` reads the digest from each pod's `imageID` and
+  `get_snapshot` fetches the snapshot for that digest, so the agent always reads the code
+  that is really running. The returned manifest shows both the tag and the digest.
+- **Multi-arch images:** a push creates one index digest plus one digest per platform
+  (amd64, arm64), and a pod may report either depending on the container runtime. The
+  publisher records the per-platform digests as aliases (`--alias-digest`,
+  `--platform-manifest`), so any of them resolves to the same snapshot.
+
+Tag images with plain versions such as `1.4.2`, not commit SHAs: the agent can see tags,
+and a SHA would point it back to git history. `snapshot-publish` warns if the tag
+contains the commit SHA.
+
+The digest is not hidden, just long. To see it:
+
+| Where | How |
+|---|---|
+| When you push | The last line of `docker push` prints `1.4.2: digest: sha256:…` |
+| From the registry | `docker buildx imagetools inspect <image>:<tag>` or `crane digest <image>:<tag>` |
+| Registry web page | On ghcr.io, each version on the package page lists its `sha256:…` |
+| Local image | `docker inspect --format '{{index .RepoDigests 0}}' <image>:<tag>` |
+| In Kubernetes | `kubectl get pod <pod> -o jsonpath='{.status.containerStatuses[*].imageID}'` |
+
 ## Development quickstart
 
 ```sh
