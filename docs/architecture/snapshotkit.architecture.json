@@ -10,7 +10,7 @@
       "url": "https://github.com/abralock/airgaped-repo-release-for-ai-agent.git",
       "provider": "github",
       "link_mode": "web",
-      "revision": "ae28fdd2ca13d6a8192415c8ac9d1dd835c72a4c"
+      "revision": "41be57bf56c7278c43ae269395131c19ac82a2a6"
     }
   },
   "components": [
@@ -166,7 +166,7 @@
       "id": "store",
       "type": "database",
       "label": "Snapshot store",
-      "sublabel": "S3-compatible, write-once",
+      "sublabel": "write-once \u00b7 per project",
       "pos": [
         540,
         180
@@ -178,6 +178,12 @@
       "sources": [
         {
           "path": "src/snapshotkit/store.py",
+          "line": 19,
+          "end_line": 48,
+          "label": "object keys: snapshots/ and index/"
+        },
+        {
+          "path": "src/snapshotkit/store.py",
           "line": 87,
           "end_line": 140,
           "label": "S3Store put_new If-None-Match"
@@ -186,13 +192,7 @@
           "path": "deploy/store/policies/pipeline-writer.template.json",
           "line": 1,
           "end_line": 13,
-          "label": "pipeline writer policy"
-        },
-        {
-          "path": "deploy/store/policies/tool-reader.json",
-          "line": 1,
-          "end_line": 15,
-          "label": "tool reader policy"
+          "label": "writer: own project folder + index"
         }
       ]
     },
@@ -512,6 +512,16 @@
       "items": [
         "Retention aborts if any cluster is unreachable or reports zero digests",
         "Separate CI and prod networks: snapshot-transfer carries a one-way, sha256-checked bundle"
+      ]
+    },
+    {
+      "dot": "emerald",
+      "title": "Snapshot store layout",
+      "items": [
+        "snapshots/<project>/sha256-\u2026.tar.gz: the code, file named by the digest",
+        "snapshots/<project>/sha256-\u2026.json: details, including the tag (1.4.2)",
+        "index/digest/sha256-\u2026.json: digest \u2192 snapshot, one per platform digest",
+        "index/tag/<image>/1.4.2.json: version \u2192 digest; the only entry that can move"
       ]
     }
   ]
