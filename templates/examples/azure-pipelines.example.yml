@@ -1,4 +1,6 @@
-# Example: build + push an image, then publish a code snapshot.
+# Example: build + push an image, capture its digest, then publish a code snapshot.
+# Runs on release tags only, so the image tag is a plain version (v1.4.2), never a commit SHA:
+# the agent can see tags.
 resources:
   repositories:
     - repository: templates
@@ -7,20 +9,47 @@ resources:
       ref: refs/tags/v1
 
 trigger:
-  - main
+  tags:
+    include:
+      - v*
+
+variables:
+  - group: registry-credentials  # REGISTRY_USER, REGISTRY_PASSWORD
+  - name: imageRepository
+    value: registry.internal/my-service
+  - name: imageTag
+    value: $(Build.SourceBranchName)  # refs/tags/v1.4.2 -> v1.4.2
 
 stages:
   - stage: Release
     jobs:
       - job: Build
         steps:
-          - script: echo "build and push; emit imageDigest"
+          - script: |
+              set -eu
+              echo "$REGISTRY_PASSWORD" | docker login "${IMAGE_REPOSITORY%%/*}" -u "$REGISTRY_USER" --password-stdin
+              # The digest exists only after the push. --metadata-file records the one the registry
+              # returned (for a multi-arch build, the index digest). Not `docker images`: that is the
+              # local image ID, which does not match what pods report.
+              docker buildx build --push -t "$IMAGE_REPOSITORY:$IMAGE_TAG" --metadata-file meta.json .
+              digest=$(grep -o '"containerimage.digest": *"sha256:[0-9a-f]*"' meta.json | grep -o 'sha256:[0-9a-f]*')
+              test -n "$digest"
+              echo "pushed $IMAGE_REPOSITORY:$IMAGE_TAG@$digest"
+              echo "##vso[task.setvariable variable=imageDigest;isOutput=true]$digest"
             name: push
+            displayName: Build, push and capture the digest
+            env:
+              IMAGE_REPOSITORY: $(imageRepository)
+              IMAGE_TAG: $(imageTag)
+              REGISTRY_USER: $(REGISTRY_USER)
+              REGISTRY_PASSWORD: $(REGISTRY_PASSWORD)
       - template: azure-devops/snapshot-publish-job.yml@templates
         parameters:
           dependsOn: Build
           project: my-service
-          imageRepository: registry.internal/my-service
-          imageTag: $(Build.BuildNumber)
+          imageRepository: $(imageRepository)
+          imageTag: $(imageTag)
           imageDigest: $[ dependencies.Build.outputs['push.imageDigest'] ]
           publisherImage: registry.internal/snapshotkit/publisher:1
+          # For a multi-arch build (--platform linux/amd64,linux/arm64), also set:
+          # multiArch: true

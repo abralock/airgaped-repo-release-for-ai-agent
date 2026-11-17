@@ -113,6 +113,33 @@ def test_examples():
     assert any(isinstance(v, dict) and v.get("extends") == ".snapshot-publish" for v in gl.values())
 
 
+DIGEST_GREP = "containerimage.digest"
+
+
+def test_gitlab_example_build_captures_digest():
+    gl = _load(GL_EX)
+    script = "\n".join(gl["build"]["script"])
+    assert "--push" in script and "--metadata-file meta.json" in script
+    assert DIGEST_GREP in script
+    for var in ("IMAGE_REPOSITORY", "IMAGE_TAG", "IMAGE_DIGEST"):
+        assert f"{var}=" in script
+    assert gl["build"]["artifacts"]["reports"]["dotenv"] == "build.env"
+    assert gl["build"]["variables"]["IMAGE_TAG"] == "$CI_COMMIT_TAG"
+    assert gl["snapshot"]["needs"][0] == {"job": "build", "artifacts": True}
+
+
+def test_ado_example_build_captures_digest():
+    ado = _load(ADO_EX)
+    build = ado["stages"][0]["jobs"][0]
+    push = next(s for s in build["steps"] if s.get("name") == "push")
+    assert "--push" in push["script"] and "--metadata-file meta.json" in push["script"]
+    assert DIGEST_GREP in push["script"]
+    assert "##vso[task.setvariable variable=imageDigest;isOutput=true]" in push["script"]
+    publish = ado["stages"][0]["jobs"][1]["parameters"]
+    assert publish["imageDigest"] == "$[ dependencies.Build.outputs['push.imageDigest'] ]"
+    assert "BuildNumber" not in ADO_EX.read_text()
+
+
 def test_ado_step_continue_on_error_and_webhook():
     job = _ado_job()
     pub = next(s for s in job["steps"] if s.get("displayName") == "snapshot-publish")

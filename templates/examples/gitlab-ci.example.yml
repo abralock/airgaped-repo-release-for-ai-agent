@@ -1,4 +1,6 @@
-# Example: build + push an image, then publish a code snapshot.
+# Example: build + push an image, capture its digest, then publish a code snapshot.
+# Runs on release tags only, so IMAGE_TAG is a plain version (v1.4.2), never a commit SHA:
+# the agent can see tags.
 include:
   - project: platform/snapshot-templates
     ref: v1
@@ -8,10 +10,32 @@ stages:
   - build
   - snapshot
 
+variables:
+  IMAGE_REPOSITORY: registry.internal/my-service
+
 build:
   stage: build
+  # Docker-in-Docker; adapt to your runner (kaniko or buildah also give the digest).
+  image: docker:27
+  services:
+    - docker:27-dind
+  rules:
+    - if: $CI_COMMIT_TAG
+  variables:
+    IMAGE_TAG: $CI_COMMIT_TAG
   script:
-    - echo "build and push; write IMAGE_REPOSITORY, IMAGE_TAG, IMAGE_DIGEST to build.env"
+    - echo "$REGISTRY_PASSWORD" | docker login "${IMAGE_REPOSITORY%%/*}" -u "$REGISTRY_USER" --password-stdin
+    # The digest exists only after the push. --metadata-file records the one the registry
+    # returned (for a multi-arch build, the index digest). Not `docker images`: that is the
+    # local image ID, which does not match what pods report.
+    - docker buildx build --push -t "$IMAGE_REPOSITORY:$IMAGE_TAG" --metadata-file meta.json .
+    - |
+      IMAGE_DIGEST=$(grep -o '"containerimage.digest": *"sha256:[0-9a-f]*"' meta.json | grep -o 'sha256:[0-9a-f]*')
+      test -n "$IMAGE_DIGEST"
+      echo "pushed $IMAGE_REPOSITORY:$IMAGE_TAG@$IMAGE_DIGEST"
+      echo "IMAGE_REPOSITORY=$IMAGE_REPOSITORY" > build.env
+      echo "IMAGE_TAG=$IMAGE_TAG" >> build.env
+      echo "IMAGE_DIGEST=$IMAGE_DIGEST" >> build.env
   artifacts:
     reports:
       dotenv: build.env
@@ -19,8 +43,12 @@ build:
 snapshot:
   stage: snapshot
   extends: .snapshot-publish
+  rules:
+    - if: $CI_COMMIT_TAG
   needs:
     - job: build
       artifacts: true
   variables:
     SNAPSHOT_PUBLISHER_IMAGE: registry.internal/snapshotkit/publisher:1
+    # For a multi-arch build (--platform linux/amd64,linux/arm64), also set:
+    # SNAPSHOT_MULTI_ARCH: "true"
