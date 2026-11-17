@@ -72,6 +72,53 @@ The digest is not hidden, just long. To see it:
 | Local image | `docker inspect --format '{{index .RepoDigests 0}}' <image>:<tag>` |
 | In Kubernetes | `kubectl get pod <pod> -o jsonpath='{.status.containerStatuses[*].imageID}'` |
 
+### Capturing the digest in your build
+
+The build has to hand the snapshot job the tag and the digest as two separate values. The
+digest exists only after the push, so read it from the push itself: `--metadata-file`
+records the digest the registry returned (the index digest for a multi-arch build). Do not
+use the image ID from `docker images`; that is a different hash and does not match what pods
+report.
+
+GitLab, from `templates/examples/gitlab-ci.example.yml` (`IMAGE_REPOSITORY` is set in its top-level `variables`):
+
+```yaml
+build:
+  stage: build
+  image: docker:27
+  services:
+    - docker:27-dind
+  rules:
+    - if: $CI_COMMIT_TAG          # release tags only: the image tag is a plain version
+  variables:
+    IMAGE_TAG: $CI_COMMIT_TAG
+  script:
+    - echo "$REGISTRY_PASSWORD" | docker login "${IMAGE_REPOSITORY%%/*}" -u "$REGISTRY_USER" --password-stdin
+    - docker buildx build --push -t "$IMAGE_REPOSITORY:$IMAGE_TAG" --metadata-file meta.json .
+    - |
+      IMAGE_DIGEST=$(grep -o '"containerimage.digest": *"sha256:[0-9a-f]*"' meta.json | grep -o 'sha256:[0-9a-f]*')
+      test -n "$IMAGE_DIGEST"
+      echo "IMAGE_REPOSITORY=$IMAGE_REPOSITORY" > build.env
+      echo "IMAGE_TAG=$IMAGE_TAG" >> build.env
+      echo "IMAGE_DIGEST=$IMAGE_DIGEST" >> build.env
+  artifacts:
+    reports:
+      dotenv: build.env           # the snapshot job reads these through `needs`
+```
+
+Azure DevOps (`templates/examples/azure-pipelines.example.yml`) runs the same push and
+`grep`, then publishes the digest as an output variable that the snapshot job template reads:
+
+```sh
+echo "##vso[task.setvariable variable=imageDigest;isOutput=true]$digest"
+# snapshot job: imageDigest: $[ dependencies.Build.outputs['push.imageDigest'] ]
+```
+
+For a multi-arch build (`--platform linux/amd64,linux/arm64`), also set
+`SNAPSHOT_MULTI_ARCH: "true"` (GitLab) or `multiArch: true` (Azure DevOps) so the
+per-platform digests are recorded as aliases. Both examples use Docker-in-Docker style
+`buildx`; kaniko and buildah can also write the pushed digest to a file.
+
 ## Development quickstart
 
 ```sh
